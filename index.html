@@ -298,6 +298,14 @@
   <button class="tab" onclick="switchTab('mas', this)">Más</button>
 </div>
 
+<div id="migrationBanner" style="display:none;margin:16px 20px 0;background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--radius-sm);padding:14px;">
+  <div style="font-size:13px;color:var(--text);margin-bottom:10px;" id="migrationText"></div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn-save" style="margin-top:0;flex:2;padding:10px;font-size:13px;" onclick="migrarDatosAntiguos()">Importar a Firebase</button>
+    <button class="btn-save btn-secondary" style="margin-top:0;flex:1;padding:10px;font-size:13px;" onclick="descartarMigracion()">Descartar</button>
+  </div>
+</div>
+
 <!-- RESUMEN -->
 <div id="tab-resumen" class="content">
   <div class="burn-card">
@@ -364,16 +372,26 @@
     </div>
     <input type="hidden" id="editId">
     <div class="field">
-      <label>Descripción</label>
-      <input type="text" id="inputDesc" placeholder="ej. Supermercado Jumbo">
+      <label>Comercio (razón social)</label>
+      <input type="text" id="inputComercio" placeholder="ej. Jumbo Chicureo">
+    </div>
+    <div class="field">
+      <label>Descripción (opcional)</label>
+      <input type="text" id="inputDesc" placeholder="ej. Compra semanal">
     </div>
     <div class="field">
       <label>Monto ($)</label>
       <input type="number" id="inputMonto" placeholder="0" inputmode="numeric">
     </div>
-    <div class="field">
-      <label>Fecha</label>
-      <input type="date" id="inputFecha">
+    <div style="display:flex;gap:10px;">
+      <div class="field" style="flex:1;">
+        <label>Fecha</label>
+        <input type="date" id="inputFecha">
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Hora</label>
+        <input type="time" id="inputHora">
+      </div>
     </div>
     <div class="field">
       <label>Usuario</label>
@@ -574,8 +592,48 @@ let classifyQueue = [];
 let classifyIndex = 0;
 let classifySelectedCat = null;
 let firebaseReady = false;
+const OLD_GASTOS_KEY = 'gastos_v2';
+const OLD_CATS_KEY = 'gastos_categorias_v3';
+
+function checkMigracion() {
+  try {
+    const oldGastos = JSON.parse(localStorage.getItem(OLD_GASTOS_KEY) || '[]');
+    if (oldGastos.length > 0) {
+      document.getElementById('migrationText').textContent =
+        `Se encontraron ${oldGastos.length} gastos guardados en este dispositivo antes de activar la sincronización. ¿Los importamos a la base compartida?`;
+      document.getElementById('migrationBanner').style.display = 'block';
+    }
+  } catch(e) {}
+}
+
+function migrarDatosAntiguos() {
+  let oldGastos = [];
+  try { oldGastos = JSON.parse(localStorage.getItem(OLD_GASTOS_KEY) || '[]'); } catch(e) {}
+  if (oldGastos.length === 0) { descartarMigracion(); return; }
+  const updates = {};
+  oldGastos.forEach(g => {
+    const newKey = db.ref('gastos').push().key;
+    updates[newKey] = { monto: g.monto, fecha: g.fecha, hora: '', comercio: g.desc || '', cat: g.cat, desc: '', usuario: g.usuario || DEFAULT_USER };
+    aprenderComercio(g.desc, g.cat);
+  });
+  db.ref('gastos').update(updates).then(() => {
+    localStorage.removeItem(OLD_GASTOS_KEY);
+    localStorage.removeItem(OLD_CATS_KEY);
+    document.getElementById('migrationBanner').style.display = 'none';
+    alert(`${oldGastos.length} gastos importados correctamente.`);
+  }).catch(err => {
+    alert('Error al importar: ' + err.message);
+  });
+}
+
+function descartarMigracion() {
+  localStorage.removeItem(OLD_GASTOS_KEY);
+  localStorage.removeItem(OLD_CATS_KEY);
+  document.getElementById('migrationBanner').style.display = 'none';
+}
 
 function initFirebaseListeners() {
+  checkMigracion();
   // Categorías: si no existen en la nube, las siembro con las por defecto
   db.ref('categorias').once('value').then(snap => {
     if (!snap.exists()) {
@@ -704,7 +762,7 @@ function renderTx(mg) {
   document.getElementById('filterChips').innerHTML = chipsHtml;
 
   const filtered = filterCat ? mg.filter(g => g.cat === filterCat) : mg;
-  const sorted = [...filtered].sort((a,b) => b.fecha.localeCompare(a.fecha));
+  const sorted = [...filtered].sort((a,b) => (b.fecha + (b.hora||'')).localeCompare(a.fecha + (a.hora||'')));
 
   if (sorted.length === 0) {
     document.getElementById('txList').innerHTML = `<div class="empty"><div class="icon">🧾</div><p>Sin gastos registrados.<br>Toca + para agregar.</p></div>`;
@@ -716,11 +774,14 @@ function renderTx(mg) {
     const cat = CATEGORIAS.find(c => c.id === g.cat) || { icon: '📦', label: 'Otros' };
     const fecha = new Date(g.fecha + 'T12:00:00');
     const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+    const horaStr = g.hora ? ' ' + g.hora : '';
+    const titulo = g.comercio || g.desc || cat.label;
+    const detalle = g.comercio && g.desc ? ` · ${g.desc}` : '';
     html += `<div class="tx-item" onclick="openEditModal('${g.id}')">
       <div class="tx-icon">${cat.icon}</div>
       <div class="tx-info">
-        <div class="tx-desc">${g.desc || cat.label}</div>
-        <div class="tx-meta">${cat.label} · ${fechaStr} · ${g.usuario || DEFAULT_USER}</div>
+        <div class="tx-desc">${titulo}${detalle}</div>
+        <div class="tx-meta">${cat.label} · ${fechaStr}${horaStr} · ${g.usuario || DEFAULT_USER}</div>
       </div>
       <div class="tx-amount">${fmt(g.monto)}</div>
     </div>`;
@@ -745,18 +806,24 @@ function switchTab(name, btn) {
 }
 
 // ── MODAL GASTO (agregar / editar) ──
+function horaActual() {
+  const d = new Date();
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
 function openModal() {
   document.getElementById('gastoModalTitle').textContent = 'Registrar gasto';
   document.getElementById('editId').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('inputHora').value = horaActual();
+  document.getElementById('inputComercio').value = '';
   document.getElementById('inputDesc').value = '';
   document.getElementById('inputMonto').value = '';
   document.getElementById('inputUsuario').value = DEFAULT_USER;
   selectedCat = null;
   renderCatGrid();
   document.getElementById('modalButtons').innerHTML = `<button class="btn-save" onclick="saveGasto()">Guardar gasto</button>`;
-  setTimeout(() => document.getElementById('inputMonto').focus(), 300);
+  setTimeout(() => document.getElementById('inputComercio').focus(), 300);
 }
 
 function openEditModal(id) {
@@ -766,6 +833,8 @@ function openEditModal(id) {
   document.getElementById('editId').value = id;
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = g.fecha;
+  document.getElementById('inputHora').value = g.hora || '';
+  document.getElementById('inputComercio').value = g.comercio || '';
   document.getElementById('inputDesc').value = g.desc || '';
   document.getElementById('inputMonto').value = g.monto;
   document.getElementById('inputUsuario').value = g.usuario || DEFAULT_USER;
@@ -795,20 +864,23 @@ function selectCat(id) { selectedCat = id; renderCatGrid(); }
 function saveGasto() {
   const monto = parseFloat(document.getElementById('inputMonto').value);
   const fecha = document.getElementById('inputFecha').value;
+  const hora = document.getElementById('inputHora').value;
+  const comercio = document.getElementById('inputComercio').value.trim();
   const desc = document.getElementById('inputDesc').value.trim();
   const usuario = document.getElementById('inputUsuario').value;
   const editId = document.getElementById('editId').value;
   if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
+  if (!comercio) { alert('Ingresa el comercio'); return; }
 
-  const data = { monto, fecha, cat: selectedCat, desc, usuario };
+  const data = { monto, fecha, hora, comercio, cat: selectedCat, desc, usuario };
   if (editId) {
     db.ref('gastos/' + editId).update(data);
   } else {
     db.ref('gastos').push(data);
   }
-  aprenderComercio(desc, selectedCat);
+  aprenderComercio(comercio, selectedCat);
   closeModal();
   const d = new Date(fecha + 'T12:00:00');
   viewYear = d.getFullYear();
@@ -822,16 +894,16 @@ function deleteGasto(id) {
 }
 
 // ── SUGERENCIA DE CATEGORÍA POR COMERCIO ──
-function aprenderComercio(desc, catId) {
-  if (!desc) return;
-  const palabras = desc.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+function aprenderComercio(comercio, catId) {
+  if (!comercio) return;
+  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
   palabras.forEach(p => { db.ref('comercios/' + encodeKey(p)).set(catId); });
 }
 function encodeKey(str) {
   // Firebase no permite . # $ [ ] / en las llaves
   return str.replace(/[.#$\[\]\/]/g, '_');
 }
-function sugerirCategoria(desc) {
+function sugerirCategoria(comercio) {
   if (!desc) return null;
   const palabras = desc.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
   for (const p of palabras) {
@@ -897,11 +969,11 @@ function saveDefaultUser() {
 
 // ── EXPORTAR CSV ──
 function buildCSV() {
-  const rows = [['Fecha','Descripción','Categoría','Monto','Usuario']];
-  const sorted = [...gastos].sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const rows = [['Fecha','Hora','Comercio','Descripción','Categoría','Monto','Usuario']];
+  const sorted = [...gastos].sort((a,b) => (a.fecha + (a.hora||'')).localeCompare(b.fecha + (b.hora||'')));
   sorted.forEach(g => {
     const cat = CATEGORIAS.find(c => c.id === g.cat);
-    rows.push([g.fecha, g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '']);
+    rows.push([g.fecha, g.hora || '', g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '']);
   });
   return rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
 }
@@ -1048,7 +1120,7 @@ function selectClassifyCat(id) { classifySelectedCat = id; renderClassifyCatGrid
 function nextClassify() {
   if (!classifySelectedCat) { alert('Selecciona una categoría'); return; }
   const item = classifyQueue[classifyIndex];
-  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, cat: classifySelectedCat, desc: item.desc, usuario: DEFAULT_USER });
+  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, hora: '', comercio: item.desc, cat: classifySelectedCat, desc: '', usuario: DEFAULT_USER });
   aprenderComercio(item.desc, classifySelectedCat);
   classifyIndex++;
   showClassifyItem();
@@ -1056,7 +1128,7 @@ function nextClassify() {
 function skipClassify() { classifyIndex++; showClassifyItem(); }
 
 // Sugerencia de categoría al escribir la descripción
-document.getElementById('inputDesc').addEventListener('input', function() {
+document.getElementById('inputComercio').addEventListener('input', function() {
   if (selectedCat) return; // no pisar si ya eligió manualmente
   const sug = sugerirCategoria(this.value);
   if (sug && CATEGORIAS.find(c => c.id === sug)) {
