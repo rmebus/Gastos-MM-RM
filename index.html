@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Control de Gastos - Ricardo</title>
+<title>Control Gastos MM</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
@@ -185,6 +185,13 @@
   .modal-overlay.open .modal { transform: translateY(0); }
   .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 20px; }
   .modal h2 { font-size: 17px; font-weight: 600; margin-bottom: 20px; }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  .modal-header h2 { margin-bottom: 0; }
+  .modal-close {
+    background: var(--surface2); border: none; color: var(--text2);
+    width: 32px; height: 32px; border-radius: 50%; font-size: 16px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
 
   .field { margin-bottom: 16px; }
   .field label { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 6px; }
@@ -261,9 +268,20 @@
 </head>
 <body>
 
+<!-- LOGIN GATE -->
+<div id="loginGate" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;">
+  <div style="font-size:48px;margin-bottom:16px;">💰</div>
+  <h1 style="font-size:20px;margin-bottom:8px;">Control Gastos MM</h1>
+  <p style="color:var(--text2);font-size:14px;margin-bottom:28px;">Inicia sesión con tu cuenta de Google autorizada</p>
+  <button id="loginBtn" style="background:var(--accent);border:none;border-radius:10px;color:white;font-size:15px;font-weight:600;padding:14px 24px;cursor:pointer;">Iniciar sesión con Google</button>
+  <p id="loginError" style="color:var(--danger);font-size:13px;margin-top:16px;display:none;"></p>
+</div>
+
+<!-- APP (oculta hasta login) -->
+<div id="appRoot" style="display:none;">
 <div class="header">
   <div class="header-top">
-    <h1>💰 Gastos Familia</h1>
+    <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
   <div class="month-nav">
@@ -340,7 +358,10 @@
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event, 'modalOverlay')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2 id="gastoModalTitle">Registrar gasto</h2>
+    <div class="modal-header">
+      <h2 id="gastoModalTitle">Registrar gasto</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
     <input type="hidden" id="editId">
     <div class="field">
       <label>Descripción</label>
@@ -375,7 +396,10 @@
 <div class="modal-overlay" id="catModalOverlay" onclick="closeModalOutside(event, 'catModalOverlay')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2>Categorías y presupuesto</h2>
+    <div class="modal-header">
+      <h2>Categorías y presupuesto</h2>
+      <button class="modal-close" onclick="document.getElementById('catModalOverlay').classList.remove('open')">✕</button>
+    </div>
     <div id="catManageList"></div>
     <div class="field" style="margin-top:16px">
       <label>Nueva categoría</label>
@@ -392,7 +416,10 @@
 <div class="modal-overlay" id="importModalOverlay" onclick="closeModalOutside(event, 'importModalOverlay')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2>Cargar gastos desde Excel</h2>
+    <div class="modal-header">
+      <h2>Cargar gastos desde Excel</h2>
+      <button class="modal-close" onclick="document.getElementById('importModalOverlay').classList.remove('open')">✕</button>
+    </div>
     <div class="field">
       <label>Archivo (.xlsx, .xls, .csv)</label>
       <div class="file-input-wrap action-btn" style="width:100%">
@@ -411,7 +438,10 @@
 <div class="modal-overlay" id="classifyModalOverlay" onclick="closeModalOutside(event, 'classifyModalOverlay')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2 id="classifyTitle">Clasificar gasto 1 de N</h2>
+    <div class="modal-header">
+      <h2 id="classifyTitle">Clasificar gasto 1 de N</h2>
+      <button class="modal-close" onclick="document.getElementById('classifyModalOverlay').classList.remove('open')">✕</button>
+    </div>
     <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px">
       <div style="font-size:15px;font-weight:600" id="classifyDesc"></div>
       <div style="font-size:13px;color:var(--text2);margin-top:4px" id="classifyDate"></div>
@@ -432,7 +462,10 @@
 <div class="modal-overlay" id="userModalOverlay" onclick="closeModalOutside(event, 'userModalOverlay')">
   <div class="modal">
     <div class="modal-handle"></div>
-    <h2>Usuario predeterminado</h2>
+    <div class="modal-header">
+      <h2>Usuario predeterminado</h2>
+      <button class="modal-close" onclick="document.getElementById('userModalOverlay').classList.remove('open')">✕</button>
+    </div>
     <div class="field">
       <select id="defaultUserSelect">
         <option value="Ricardo">Ricardo</option>
@@ -443,12 +476,62 @@
   </div>
 </div>
 
+</div><!-- /appRoot -->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
+// ── FIREBASE CONFIG ──
+const firebaseConfig = {
+  apiKey: "AIzaSyBsUUlWK5Pqmvb63FP9oWiMgMMq00mdJ0w",
+  authDomain: "gastos-mm.firebaseapp.com",
+  databaseURL: "https://gastos-mm-default-rtdb.firebaseio.com",
+  projectId: "gastos-mm",
+  storageBucket: "gastos-mm.firebasestorage.app",
+  messagingSenderId: "713424608418",
+  appId: "1:713424608418:web:86eddaab5ec0cab3628bfb"
+};
+const ALLOWED_EMAILS = ['rmebusp@gmail.com', 'mayamp.05@gmail.com'];
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+let currentUserEmail = null;
+
+document.getElementById('loginBtn').addEventListener('click', () => {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  document.getElementById('loginError').style.display = 'none';
+  auth.signInWithPopup(provider).catch(err => {
+    document.getElementById('loginError').textContent = 'Error al iniciar sesión: ' + err.message;
+    document.getElementById('loginError').style.display = 'block';
+  });
+});
+
+auth.onAuthStateChanged(user => {
+  if (user && ALLOWED_EMAILS.includes(user.email)) {
+    currentUserEmail = user.email;
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('appRoot').style.display = 'block';
+    if (!localStorage.getItem(DEFAULT_USER_KEY)) {
+      DEFAULT_USER = user.email === 'rmebusp@gmail.com' ? 'Ricardo' : 'Mayra';
+      localStorage.setItem(DEFAULT_USER_KEY, DEFAULT_USER);
+    }
+    initFirebaseListeners();
+  } else if (user) {
+    document.getElementById('loginError').textContent = 'Esta cuenta (' + user.email + ') no está autorizada para usar la app.';
+    document.getElementById('loginError').style.display = 'block';
+    auth.signOut();
+  } else {
+    document.getElementById('loginGate').style.display = 'flex';
+    document.getElementById('appRoot').style.display = 'none';
+  }
+});
+
 const DEFAULT_USER_KEY = 'gastos_default_user';
 let DEFAULT_USER = localStorage.getItem(DEFAULT_USER_KEY) || 'Ricardo';
 
-const CATS_KEY = 'gastos_categorias_v3';
 const DEFAULT_CATEGORIAS = [
   { id: 'bencina', label: 'Bencina', icon: '⛽', budget: 100000 },
   { id: 'celular', label: 'Celular', icon: '📱', budget: 30000 },
@@ -467,18 +550,14 @@ const DEFAULT_CATEGORIAS = [
   { id: 'ocio', label: 'Ocio - varios', icon: '🎬', budget: 80000 },
 ];
 
-function loadCategorias() {
-  try {
-    const stored = JSON.parse(localStorage.getItem(CATS_KEY));
-    if (stored && stored.length) return stored;
-  } catch(e) {}
-  return DEFAULT_CATEGORIAS;
-}
-function saveCategorias() {
-  localStorage.setItem(CATS_KEY, JSON.stringify(CATEGORIAS));
-}
+let CATEGORIAS = [];
+let COMERCIOS = {}; // diccionario de sugerencia: palabra -> categoria id
 
-let CATEGORIAS = loadCategorias();
+function saveCategorias() {
+  const obj = {};
+  CATEGORIAS.forEach(c => { obj[c.id] = { label: c.label, icon: c.icon, budget: c.budget }; });
+  db.ref('categorias').set(obj);
+}
 
 function getPresupuestoTotal() {
   return CATEGORIAS.reduce((s, c) => s + (c.budget || 0), 0);
@@ -494,13 +573,37 @@ let importedRows = [];
 let classifyQueue = [];
 let classifyIndex = 0;
 let classifySelectedCat = null;
+let firebaseReady = false;
 
-const STORAGE_KEY = 'gastos_v2';
+function initFirebaseListeners() {
+  // Categorías: si no existen en la nube, las siembro con las por defecto
+  db.ref('categorias').once('value').then(snap => {
+    if (!snap.exists()) {
+      const obj = {};
+      DEFAULT_CATEGORIAS.forEach(c => { obj[c.id] = { label: c.label, icon: c.icon, budget: c.budget }; });
+      db.ref('categorias').set(obj);
+    }
+    db.ref('categorias').on('value', snap2 => {
+      const val = snap2.val() || {};
+      CATEGORIAS = Object.keys(val).map(id => ({ id, label: val[id].label, icon: val[id].icon, budget: val[id].budget }));
+      if (CATEGORIAS.length === 0) CATEGORIAS = DEFAULT_CATEGORIAS.slice();
+      updateAll();
+    });
+  });
 
-function loadData() {
-  try { gastos = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { gastos = []; }
+  // Gastos: escucha en tiempo real
+  db.ref('gastos').on('value', snap => {
+    const val = snap.val() || {};
+    gastos = Object.keys(val).map(id => ({ id, ...val[id] }));
+    firebaseReady = true;
+    updateAll();
+  });
+
+  // Diccionario de comercios (sugerencia de categoría)
+  db.ref('comercios').on('value', snap => {
+    COMERCIOS = snap.val() || {};
+  });
 }
-function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(gastos)); }
 
 function fmt(n) { return '$' + Math.round(n).toLocaleString('es-CL'); }
 
@@ -699,26 +802,43 @@ function saveGasto() {
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
 
+  const data = { monto, fecha, cat: selectedCat, desc, usuario };
   if (editId) {
-    const idx = gastos.findIndex(g => g.id === editId);
-    if (idx >= 0) gastos[idx] = { ...gastos[idx], monto, fecha, cat: selectedCat, desc, usuario };
+    db.ref('gastos/' + editId).update(data);
   } else {
-    gastos.push({ id: Date.now().toString(), monto, fecha, cat: selectedCat, desc, usuario });
+    db.ref('gastos').push(data);
   }
-  saveData();
+  aprenderComercio(desc, selectedCat);
   closeModal();
   const d = new Date(fecha + 'T12:00:00');
   viewYear = d.getFullYear();
   viewMonth = d.getMonth();
-  updateAll();
 }
 
 function deleteGasto(id) {
   if (!confirm('¿Eliminar este gasto?')) return;
-  gastos = gastos.filter(g => g.id !== id);
-  saveData();
+  db.ref('gastos/' + id).remove();
   closeModal();
-  updateAll();
+}
+
+// ── SUGERENCIA DE CATEGORÍA POR COMERCIO ──
+function aprenderComercio(desc, catId) {
+  if (!desc) return;
+  const palabras = desc.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  palabras.forEach(p => { db.ref('comercios/' + encodeKey(p)).set(catId); });
+}
+function encodeKey(str) {
+  // Firebase no permite . # $ [ ] / en las llaves
+  return str.replace(/[.#$\[\]\/]/g, '_');
+}
+function sugerirCategoria(desc) {
+  if (!desc) return null;
+  const palabras = desc.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  for (const p of palabras) {
+    const key = encodeKey(p);
+    if (COMERCIOS[key]) return COMERCIOS[key];
+  }
+  return null;
 }
 
 // ── GESTIÓN DE CATEGORÍAS ──
@@ -928,16 +1048,23 @@ function selectClassifyCat(id) { classifySelectedCat = id; renderClassifyCatGrid
 function nextClassify() {
   if (!classifySelectedCat) { alert('Selecciona una categoría'); return; }
   const item = classifyQueue[classifyIndex];
-  gastos.push({ id: Date.now().toString() + classifyIndex, monto: item.monto, fecha: item.fecha, cat: classifySelectedCat, desc: item.desc, usuario: DEFAULT_USER });
-  saveData();
+  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, cat: classifySelectedCat, desc: item.desc, usuario: DEFAULT_USER });
+  aprenderComercio(item.desc, classifySelectedCat);
   classifyIndex++;
   showClassifyItem();
 }
 function skipClassify() { classifyIndex++; showClassifyItem(); }
 
-// Init
-loadData();
-updateAll();
+// Sugerencia de categoría al escribir la descripción
+document.getElementById('inputDesc').addEventListener('input', function() {
+  if (selectedCat) return; // no pisar si ya eligió manualmente
+  const sug = sugerirCategoria(this.value);
+  if (sug && CATEGORIAS.find(c => c.id === sug)) {
+    selectedCat = sug;
+    renderCatGrid();
+  }
+});
+
 </script>
 </body>
 </html>
