@@ -180,7 +180,8 @@
   .modal {
     background: var(--surface); border-radius: 20px 20px 0 0; padding: 24px 20px 40px;
     width: 100%; max-width: 430px; margin: 0 auto; transform: translateY(100%);
-    transition: transform 0.25s cubic-bezier(0.32,0.72,0,1); max-height: 88vh; overflow-y: auto;
+    transition: transform 0.25s cubic-bezier(0.32,0.72,0,1); max-height: 85vh; overflow-y: auto;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y;
   }
   .modal-overlay.open .modal { transform: translateY(0); }
   .modal-handle { width: 36px; height: 4px; background: var(--border); border-radius: 2px; margin: 0 auto 20px; }
@@ -264,9 +265,28 @@
   .import-row-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
   .import-row .imp-desc { font-weight: 500; }
   .import-row .imp-amount { font-family: 'JetBrains Mono', monospace; color: var(--text2); }
+
+  .inbox-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 14px; margin-bottom: 10px;
+  }
+  .inbox-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .inbox-top .tx-icon { flex-shrink: 0; }
+  .inbox-info { flex: 1; min-width: 0; }
+  .inbox-desc { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inbox-meta { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .inbox-amount { font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: var(--danger); flex-shrink: 0; }
+  .inbox-sug-row { display: flex; align-items: center; gap: 8px; background: var(--surface2); border-radius: 8px; padding: 8px 10px; }
+  .inbox-sug-label { flex: 1; font-size: 13px; color: var(--text2); }
+  .inbox-sug-label b { color: var(--text); }
+  .inbox-btn { border: none; border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; }
+  .inbox-btn-accept { background: var(--ok-soft); color: var(--ok); }
+  .inbox-btn-edit { background: var(--surface); color: var(--text2); border: 1px solid var(--border); }
+  .inbox-no-sug { display: flex; justify-content: flex-end; }
 </style>
 </head>
 <body>
+
 
 <!-- LOGIN GATE -->
 <div id="loginGate" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;">
@@ -907,16 +927,43 @@ function renderInbox() {
     const fecha = new Date(p.fecha + 'T12:00:00');
     const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
     const origenIcon = p.origen === 'telegram' ? '📱' : p.origen === 'gmail' ? '📧' : '📥';
-    html += `<div class="tx-item" onclick="openAssignModal('${p.id}')">
-      <div class="tx-icon">${origenIcon}</div>
-      <div class="tx-info">
-        <div class="tx-desc">${p.comercio || p.desc || 'Sin nombre'}</div>
-        <div class="tx-meta">${fechaStr} · toca para asignar categoría</div>
+    const sugId = sugerirCategoria(p.comercio);
+    const sugCat = sugId ? CATEGORIAS.find(c => c.id === sugId) : null;
+
+    let sugHtml;
+    if (sugCat) {
+      sugHtml = `<div class="inbox-sug-row">
+        <div class="inbox-sug-label">Sugerido: <b>${sugCat.icon} ${sugCat.label}</b></div>
+        <button class="inbox-btn inbox-btn-accept" onclick="event.stopPropagation(); aceptarSugerencia('${p.id}', '${sugCat.id}')">✓ Aceptar</button>
+        <button class="inbox-btn inbox-btn-edit" onclick="event.stopPropagation(); openAssignModal('${p.id}')">Editar</button>
+      </div>`;
+    } else {
+      sugHtml = `<div class="inbox-no-sug">
+        <button class="inbox-btn inbox-btn-edit" onclick="event.stopPropagation(); openAssignModal('${p.id}')">Asignar categoría</button>
+      </div>`;
+    }
+
+    html += `<div class="inbox-card">
+      <div class="inbox-top" onclick="openAssignModal('${p.id}')">
+        <div class="tx-icon">${origenIcon}</div>
+        <div class="inbox-info">
+          <div class="inbox-desc">${p.comercio || p.desc || 'Sin nombre'}</div>
+          <div class="inbox-meta">${fechaStr}</div>
+        </div>
+        <div class="inbox-amount">${fmt(p.monto)}</div>
       </div>
-      <div class="tx-amount">${fmt(p.monto)}</div>
+      ${sugHtml}
     </div>`;
   });
   cont.innerHTML = html;
+}
+
+function aceptarSugerencia(id, catId) {
+  const p = pendientes.find(x => x.id === id);
+  if (!p) return;
+  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: p.desc || '', usuario: DEFAULT_USER });
+  db.ref('pendientes/' + id).remove();
+  aprenderComercio(p.comercio, catId);
 }
 
 function descartarPendiente(id) {
