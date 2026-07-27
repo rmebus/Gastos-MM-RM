@@ -381,6 +381,7 @@
   </div>
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
+    <button class="action-btn" onclick="reindexarComercios()"><span class="ic">🔄</span>Reindexar<br>sugerencias</button>
   </div>
 </div>
 
@@ -1037,6 +1038,14 @@ function sugerirCategoria(comercio) {
     const key = encodeKey(p);
     if (COMERCIOS[key]) return COMERCIOS[key];
   }
+  // Respaldo: si no está en el diccionario, busca coincidencia directa
+  // en los gastos ya guardados (comercio o descripción)
+  for (const g of gastos) {
+    const texto = ((g.comercio || '') + ' ' + (g.desc || '')).toLowerCase();
+    for (const p of palabras) {
+      if (texto.includes(p)) return g.cat;
+    }
+  }
   return null;
 }
 
@@ -1092,6 +1101,16 @@ function saveDefaultUser() {
   localStorage.setItem(DEFAULT_USER_KEY, DEFAULT_USER);
   document.getElementById('userModalOverlay').classList.remove('open');
   updateAll();
+}
+
+function reindexarComercios() {
+  if (gastos.length === 0) { alert('No hay gastos guardados todavía.'); return; }
+  if (!confirm(`Se van a revisar ${gastos.length} gastos guardados para mejorar las sugerencias de categoría. ¿Continuar?`)) return;
+  gastos.forEach(g => {
+    const texto = g.comercio || g.desc || '';
+    if (texto) aprenderComercio(texto, g.cat);
+  });
+  alert('Listo, se actualizaron las sugerencias con tu historial completo.');
 }
 
 // ── EXPORTAR CSV ──
