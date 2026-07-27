@@ -694,6 +694,7 @@ function initFirebaseListeners() {
     gastos = Object.keys(val).map(id => ({ id, ...val[id] }));
     firebaseReady = true;
     updateAll();
+    renderInbox();
   });
 
   // Pendientes (inbox): llegados de Telegram/Gmail, no suman al gasto hasta clasificar
@@ -709,6 +710,7 @@ function initFirebaseListeners() {
   // Diccionario de comercios (sugerencia de categoría)
   db.ref('comercios').on('value', snap => {
     COMERCIOS = snap.val() || {};
+    renderInbox();
   });
 }
 
