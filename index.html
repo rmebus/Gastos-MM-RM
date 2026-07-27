@@ -1031,8 +1031,8 @@ function encodeKey(str) {
   return str.replace(/[.#$\[\]\/]/g, '_');
 }
 function sugerirCategoria(comercio) {
-  if (!desc) return null;
-  const palabras = desc.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  if (!comercio) return null;
+  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
   for (const p of palabras) {
     const key = encodeKey(p);
     if (COMERCIOS[key]) return COMERCIOS[key];
