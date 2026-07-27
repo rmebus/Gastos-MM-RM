@@ -230,11 +230,11 @@
   }
 
   .chip {
-    display: inline-block; font-size: 11px; padding: 3px 8px; border-radius: 20px;
-    background: var(--surface2); color: var(--text3); margin-right: 4px; margin-bottom: 4px;
-    cursor: pointer; border: 1px solid var(--border);
+    display: inline-block; font-size: 16px; padding: 10px 18px; border-radius: 24px;
+    background: var(--surface2); color: var(--text2); margin-right: 8px; margin-bottom: 8px;
+    cursor: pointer; border: 1px solid var(--border); font-weight: 500;
   }
-  .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+  .chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); font-weight: 700; }
 
   .no-data { font-size: 12px; color: var(--text3); text-align: center; padding: 16px; }
 
@@ -295,6 +295,7 @@
   <button class="tab active" onclick="switchTab('resumen', this)">Resumen</button>
   <button class="tab" onclick="switchTab('categorias', this)">Categorías</button>
   <button class="tab" onclick="switchTab('gastos', this)">Gastos</button>
+  <button class="tab" onclick="switchTab('inbox', this)">Inbox<span id="pendBadge" style="display:none;background:var(--danger);color:white;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;"></span></button>
   <button class="tab" onclick="switchTab('mas', this)">Más</button>
 </div>
 
@@ -331,7 +332,7 @@
 <div id="tab-categorias" class="content" style="display:none">
   <div class="section-title">
     <span>Gasto por categoría</span>
-    <span class="link" onclick="switchTab('mas', document.querySelectorAll('.tab')[3]); setTimeout(()=>openCatManager(),50)">Editar / Presupuesto</span>
+    <span class="link" onclick="switchTab('mas', document.querySelectorAll('.tab')[4]); setTimeout(()=>openCatManager(),50)">Editar / Presupuesto</span>
   </div>
   <div class="cat-list" id="catList"></div>
 </div>
@@ -340,6 +341,12 @@
 <div id="tab-gastos" class="content" style="display:none">
   <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:14px;" id="filterChips"></div>
   <div class="tx-list" id="txList"></div>
+</div>
+
+<!-- INBOX -->
+<div id="tab-inbox" class="content" style="display:none">
+  <div class="section-title">Por clasificar (no suma al gasto hasta asignar categoría)</div>
+  <div class="tx-list" id="inboxList"></div>
 </div>
 
 <!-- MÁS -->
@@ -371,6 +378,7 @@
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <input type="hidden" id="editId">
+    <input type="hidden" id="pendId">
     <div class="field">
       <label>Comercio (razón social)</label>
       <input type="text" id="inputComercio" placeholder="ej. Jumbo Chicureo">
@@ -383,15 +391,9 @@
       <label>Monto ($)</label>
       <input type="number" id="inputMonto" placeholder="0" inputmode="numeric">
     </div>
-    <div style="display:flex;gap:10px;">
-      <div class="field" style="flex:1;">
-        <label>Fecha</label>
-        <input type="date" id="inputFecha">
-      </div>
-      <div class="field" style="flex:1;">
-        <label>Hora</label>
-        <input type="time" id="inputHora">
-      </div>
+    <div class="field">
+      <label>Fecha</label>
+      <input type="date" id="inputFecha">
     </div>
     <div class="field">
       <label>Usuario</label>
@@ -585,6 +587,7 @@ let currentDate = new Date();
 let viewYear = currentDate.getFullYear();
 let viewMonth = currentDate.getMonth();
 let gastos = [];
+let pendientes = [];
 let selectedCat = null;
 let filterCat = null;
 let importedRows = [];
@@ -613,7 +616,7 @@ function migrarDatosAntiguos() {
   const updates = {};
   oldGastos.forEach(g => {
     const newKey = db.ref('gastos').push().key;
-    updates[newKey] = { monto: g.monto, fecha: g.fecha, hora: '', comercio: g.desc || '', cat: g.cat, desc: '', usuario: g.usuario || DEFAULT_USER };
+    updates[newKey] = { monto: g.monto, fecha: g.fecha, comercio: '', cat: g.cat, desc: g.desc || '', usuario: g.usuario || DEFAULT_USER };
     aprenderComercio(g.desc, g.cat);
   });
   db.ref('gastos').update(updates).then(() => {
@@ -632,6 +635,20 @@ function descartarMigracion() {
   document.getElementById('migrationBanner').style.display = 'none';
 }
 
+function ordenarCategorias(arr) {
+  const prioridad = ['Supermercado', 'Salida'];
+  return arr.slice().sort((a, b) => {
+    const pa = prioridad.indexOf(a.label);
+    const pb = prioridad.indexOf(b.label);
+    if (pa !== -1 || pb !== -1) {
+      if (pa === -1) return 1;
+      if (pb === -1) return -1;
+      return pa - pb;
+    }
+    return a.label.localeCompare(b.label, 'es');
+  });
+}
+
 function initFirebaseListeners() {
   checkMigracion();
   // Categorías: si no existen en la nube, las siembro con las por defecto
@@ -643,8 +660,9 @@ function initFirebaseListeners() {
     }
     db.ref('categorias').on('value', snap2 => {
       const val = snap2.val() || {};
-      CATEGORIAS = Object.keys(val).map(id => ({ id, label: val[id].label, icon: val[id].icon, budget: val[id].budget }));
-      if (CATEGORIAS.length === 0) CATEGORIAS = DEFAULT_CATEGORIAS.slice();
+      let arr = Object.keys(val).map(id => ({ id, label: val[id].label, icon: val[id].icon, budget: val[id].budget }));
+      if (arr.length === 0) arr = DEFAULT_CATEGORIAS.slice();
+      CATEGORIAS = ordenarCategorias(arr);
       updateAll();
     });
   });
@@ -655,6 +673,16 @@ function initFirebaseListeners() {
     gastos = Object.keys(val).map(id => ({ id, ...val[id] }));
     firebaseReady = true;
     updateAll();
+  });
+
+  // Pendientes (inbox): llegados de Telegram/Gmail, no suman al gasto hasta clasificar
+  db.ref('pendientes').on('value', snap => {
+    const val = snap.val() || {};
+    pendientes = Object.keys(val).map(id => ({ id, ...val[id] }));
+    renderInbox();
+    const badge = document.getElementById('pendBadge');
+    if (pendientes.length > 0) { badge.textContent = pendientes.length; badge.style.display = 'inline-block'; }
+    else { badge.style.display = 'none'; }
   });
 
   // Diccionario de comercios (sugerencia de categoría)
@@ -762,7 +790,7 @@ function renderTx(mg) {
   document.getElementById('filterChips').innerHTML = chipsHtml;
 
   const filtered = filterCat ? mg.filter(g => g.cat === filterCat) : mg;
-  const sorted = [...filtered].sort((a,b) => (b.fecha + (b.hora||'')).localeCompare(a.fecha + (a.hora||'')));
+  const sorted = [...filtered].sort((a,b) => b.fecha.localeCompare(a.fecha));
 
   if (sorted.length === 0) {
     document.getElementById('txList').innerHTML = `<div class="empty"><div class="icon">🧾</div><p>Sin gastos registrados.<br>Toca + para agregar.</p></div>`;
@@ -774,14 +802,13 @@ function renderTx(mg) {
     const cat = CATEGORIAS.find(c => c.id === g.cat) || { icon: '📦', label: 'Otros' };
     const fecha = new Date(g.fecha + 'T12:00:00');
     const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
-    const horaStr = g.hora ? ' ' + g.hora : '';
     const titulo = g.comercio || g.desc || cat.label;
     const detalle = g.comercio && g.desc ? ` · ${g.desc}` : '';
     html += `<div class="tx-item" onclick="openEditModal('${g.id}')">
       <div class="tx-icon">${cat.icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${titulo}${detalle}</div>
-        <div class="tx-meta">${cat.label} · ${fechaStr}${horaStr} · ${g.usuario || DEFAULT_USER}</div>
+        <div class="tx-meta">${cat.label} · ${fechaStr} · ${g.usuario || DEFAULT_USER}</div>
       </div>
       <div class="tx-amount">${fmt(g.monto)}</div>
     </div>`;
@@ -806,16 +833,12 @@ function switchTab(name, btn) {
 }
 
 // ── MODAL GASTO (agregar / editar) ──
-function horaActual() {
-  const d = new Date();
-  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-}
 function openModal() {
   document.getElementById('gastoModalTitle').textContent = 'Registrar gasto';
   document.getElementById('editId').value = '';
+  document.getElementById('pendId').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = new Date().toISOString().split('T')[0];
-  document.getElementById('inputHora').value = horaActual();
   document.getElementById('inputComercio').value = '';
   document.getElementById('inputDesc').value = '';
   document.getElementById('inputMonto').value = '';
@@ -831,9 +854,9 @@ function openEditModal(id) {
   if (!g) return;
   document.getElementById('gastoModalTitle').textContent = 'Editar gasto';
   document.getElementById('editId').value = id;
+  document.getElementById('pendId').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = g.fecha;
-  document.getElementById('inputHora').value = g.hora || '';
   document.getElementById('inputComercio').value = g.comercio || '';
   document.getElementById('inputDesc').value = g.desc || '';
   document.getElementById('inputMonto').value = g.monto;
@@ -848,6 +871,60 @@ function openEditModal(id) {
 }
 
 function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+function openAssignModal(id) {
+  const p = pendientes.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('gastoModalTitle').textContent = 'Asignar categoría';
+  document.getElementById('editId').value = '';
+  document.getElementById('pendId').value = id;
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('inputFecha').value = p.fecha;
+  document.getElementById('inputComercio').value = p.comercio || '';
+  document.getElementById('inputDesc').value = p.desc || '';
+  document.getElementById('inputMonto').value = p.monto;
+  document.getElementById('inputUsuario').value = DEFAULT_USER;
+  const sug = sugerirCategoria(p.comercio);
+  selectedCat = (sug && CATEGORIAS.find(c => c.id === sug)) ? sug : null;
+  renderCatGrid();
+  document.getElementById('modalButtons').innerHTML = `
+    <div class="btn-row">
+      <button class="btn-save btn-delete" style="flex:1" onclick="descartarPendiente('${id}')">Descartar</button>
+      <button class="btn-save" style="flex:2" onclick="saveGasto()">Registrar gasto</button>
+    </div>`;
+}
+
+function renderInbox() {
+  const cont = document.getElementById('inboxList');
+  if (!cont) return;
+  if (pendientes.length === 0) {
+    cont.innerHTML = `<div class="empty"><div class="icon">📥</div><p>No hay movimientos pendientes por clasificar.</p></div>`;
+    return;
+  }
+  const sorted = [...pendientes].sort((a,b) => b.fecha.localeCompare(a.fecha));
+  let html = '';
+  sorted.forEach(p => {
+    const fecha = new Date(p.fecha + 'T12:00:00');
+    const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
+    const origenIcon = p.origen === 'telegram' ? '📱' : p.origen === 'gmail' ? '📧' : '📥';
+    html += `<div class="tx-item" onclick="openAssignModal('${p.id}')">
+      <div class="tx-icon">${origenIcon}</div>
+      <div class="tx-info">
+        <div class="tx-desc">${p.comercio || p.desc || 'Sin nombre'}</div>
+        <div class="tx-meta">${fechaStr} · toca para asignar categoría</div>
+      </div>
+      <div class="tx-amount">${fmt(p.monto)}</div>
+    </div>`;
+  });
+  cont.innerHTML = html;
+}
+
+function descartarPendiente(id) {
+  if (!confirm('¿Descartar este movimiento sin registrarlo como gasto?')) return;
+  db.ref('pendientes/' + id).remove();
+  closeModal();
+}
+
 function closeModalOutside(e, id) { if (e.target === document.getElementById(id)) document.getElementById(id).classList.remove('open'); }
 
 function renderCatGrid() {
@@ -864,18 +941,21 @@ function selectCat(id) { selectedCat = id; renderCatGrid(); }
 function saveGasto() {
   const monto = parseFloat(document.getElementById('inputMonto').value);
   const fecha = document.getElementById('inputFecha').value;
-  const hora = document.getElementById('inputHora').value;
   const comercio = document.getElementById('inputComercio').value.trim();
   const desc = document.getElementById('inputDesc').value.trim();
   const usuario = document.getElementById('inputUsuario').value;
   const editId = document.getElementById('editId').value;
+  const pendId = document.getElementById('pendId').value;
   if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
   if (!comercio) { alert('Ingresa el comercio'); return; }
 
-  const data = { monto, fecha, hora, comercio, cat: selectedCat, desc, usuario };
-  if (editId) {
+  const data = { monto, fecha, comercio, cat: selectedCat, desc, usuario };
+  if (pendId) {
+    db.ref('gastos').push(data);
+    db.ref('pendientes/' + pendId).remove();
+  } else if (editId) {
     db.ref('gastos/' + editId).update(data);
   } else {
     db.ref('gastos').push(data);
@@ -969,11 +1049,11 @@ function saveDefaultUser() {
 
 // ── EXPORTAR CSV ──
 function buildCSV() {
-  const rows = [['Fecha','Hora','Comercio','Descripción','Categoría','Monto','Usuario']];
-  const sorted = [...gastos].sort((a,b) => (a.fecha + (a.hora||'')).localeCompare(b.fecha + (b.hora||'')));
+  const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario']];
+  const sorted = [...gastos].sort((a,b) => a.fecha.localeCompare(b.fecha));
   sorted.forEach(g => {
     const cat = CATEGORIAS.find(c => c.id === g.cat);
-    rows.push([g.fecha, g.hora || '', g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '']);
+    rows.push([g.fecha, g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '']);
   });
   return rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
 }
@@ -1120,7 +1200,7 @@ function selectClassifyCat(id) { classifySelectedCat = id; renderClassifyCatGrid
 function nextClassify() {
   if (!classifySelectedCat) { alert('Selecciona una categoría'); return; }
   const item = classifyQueue[classifyIndex];
-  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, hora: '', comercio: item.desc, cat: classifySelectedCat, desc: '', usuario: DEFAULT_USER });
+  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, comercio: item.desc, cat: classifySelectedCat, desc: '', usuario: DEFAULT_USER });
   aprenderComercio(item.desc, classifySelectedCat);
   classifyIndex++;
   showClassifyItem();
