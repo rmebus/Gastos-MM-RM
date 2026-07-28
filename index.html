@@ -685,6 +685,7 @@ function initFirebaseListeners() {
       if (arr.length === 0) arr = DEFAULT_CATEGORIAS.slice();
       CATEGORIAS = ordenarCategorias(arr);
       updateAll();
+      renderInbox();
     });
   });
 
@@ -907,7 +908,7 @@ function openAssignModal(id) {
   document.getElementById('inputDesc').value = p.desc || '';
   document.getElementById('inputMonto').value = p.monto;
   document.getElementById('inputUsuario').value = DEFAULT_USER;
-  const sug = sugerirCategoria(p.comercio);
+  let sug = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
   selectedCat = (sug && CATEGORIAS.find(c => c.id === sug)) ? sug : null;
   renderCatGrid();
   document.getElementById('modalButtons').innerHTML = `
@@ -930,7 +931,7 @@ function renderInbox() {
     const fecha = new Date(p.fecha + 'T12:00:00');
     const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
     const origenIcon = p.origen === 'telegram' ? '📱' : p.origen === 'gmail' ? '📧' : '📥';
-    const sugId = sugerirCategoria(p.comercio);
+    const sugId = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
     const sugCat = sugId ? CATEGORIAS.find(c => c.id === sugId) : null;
 
     let sugHtml;
@@ -1040,13 +1041,20 @@ function sugerirCategoria(comercio) {
     const key = encodeKey(p);
     if (COMERCIOS[key]) return COMERCIOS[key];
   }
-  // Respaldo: si no está en el diccionario, busca coincidencia directa
+  // Respaldo 1: si no está en el diccionario, busca coincidencia directa
   // en los gastos ya guardados (comercio o descripción)
   for (const g of gastos) {
     const texto = ((g.comercio || '') + ' ' + (g.desc || '')).toLowerCase();
     for (const p of palabras) {
       if (texto.includes(p)) return g.cat;
     }
+  }
+  // Respaldo 2: si el nombre de una categoría aparece textualmente en el
+  // comercio (ej. "Farmacia Cruz Verde" contiene la palabra "Farmacia")
+  const comercioLower = comercio.toLowerCase();
+  for (const c of CATEGORIAS) {
+    const labelLower = c.label.toLowerCase();
+    if (labelLower.length >= 3 && comercioLower.includes(labelLower)) return c.id;
   }
   return null;
 }
