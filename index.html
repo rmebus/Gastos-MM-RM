@@ -424,6 +424,13 @@
       </select>
     </div>
     <div class="field">
+      <label>Medio de pago</label>
+      <select id="inputMedio">
+        <option value="TC">Tarjeta de crédito (TC)</option>
+        <option value="CC">Cuenta corriente (CC)</option>
+      </select>
+    </div>
+    <div class="field">
       <label>Categoría</label>
       <div class="cat-grid" id="catGrid"></div>
     </div>
@@ -828,11 +835,12 @@ function renderTx(mg) {
     const fechaStr = fecha.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
     const titulo = g.comercio || g.desc || cat.label;
     const detalle = g.comercio && g.desc ? ` · ${g.desc}` : '';
+    const medioTag = g.medio ? `<span style="background:var(--surface2);color:var(--text3);font-size:10px;font-weight:600;padding:1px 6px;border-radius:8px;margin-left:6px;">${g.medio}</span>` : '';
     html += `<div class="tx-item" onclick="openEditModal('${g.id}')">
       <div class="tx-icon">${cat.icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${titulo}${detalle}</div>
-        <div class="tx-meta">${cat.label} · ${fechaStr} · ${g.usuario || DEFAULT_USER}</div>
+        <div class="tx-meta">${cat.label} · ${fechaStr} · ${g.usuario || DEFAULT_USER}${medioTag}</div>
       </div>
       <div class="tx-amount">${fmt(g.monto)}</div>
     </div>`;
@@ -867,6 +875,7 @@ function openModal() {
   document.getElementById('inputDesc').value = '';
   document.getElementById('inputMonto').value = '';
   document.getElementById('inputUsuario').value = DEFAULT_USER;
+  document.getElementById('inputMedio').value = 'TC';
   selectedCat = null;
   renderCatGrid();
   document.getElementById('modalButtons').innerHTML = `<button class="btn-save" onclick="saveGasto()">Guardar gasto</button>`;
@@ -885,6 +894,7 @@ function openEditModal(id) {
   document.getElementById('inputDesc').value = g.desc || '';
   document.getElementById('inputMonto').value = g.monto;
   document.getElementById('inputUsuario').value = g.usuario || DEFAULT_USER;
+  document.getElementById('inputMedio').value = g.medio || 'TC';
   selectedCat = g.cat;
   renderCatGrid();
   document.getElementById('modalButtons').innerHTML = `
@@ -905,9 +915,10 @@ function openAssignModal(id) {
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = p.fecha;
   document.getElementById('inputComercio').value = p.comercio || '';
-  document.getElementById('inputDesc').value = p.desc || '';
+  document.getElementById('inputDesc').value = p.desc || sugerirDescripcion(p.comercio) || '';
   document.getElementById('inputMonto').value = p.monto;
   document.getElementById('inputUsuario').value = DEFAULT_USER;
+  document.getElementById('inputMedio').value = p.medio || 'TC';
   let sug = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
   selectedCat = (sug && CATEGORIAS.find(c => c.id === sug)) ? sug : null;
   renderCatGrid();
@@ -933,11 +944,13 @@ function renderInbox() {
     const origenIcon = p.origen === 'telegram' ? '📱' : p.origen === 'gmail' ? '📧' : '📥';
     const sugId = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
     const sugCat = sugId ? CATEGORIAS.find(c => c.id === sugId) : null;
+    const sugDesc = sugCat ? sugerirDescripcion(p.comercio) : null;
 
     let sugHtml;
     if (sugCat) {
+      const descHtml = sugDesc ? ` <span style="color:var(--text3);font-weight:400;">· "${sugDesc}"</span>` : '';
       sugHtml = `<div class="inbox-sug-row">
-        <div class="inbox-sug-label">Sugerido: <b>${sugCat.icon} ${sugCat.label}</b></div>
+        <div class="inbox-sug-label">Sugerido: <b>${sugCat.icon} ${sugCat.label}</b>${descHtml}</div>
         <button class="inbox-btn inbox-btn-accept" onclick="event.stopPropagation(); aceptarSugerencia('${p.id}', '${sugCat.id}')">✓ Aceptar</button>
         <button class="inbox-btn inbox-btn-edit" onclick="event.stopPropagation(); openAssignModal('${p.id}')">Editar</button>
       </div>`;
@@ -952,10 +965,11 @@ function renderInbox() {
         <div class="tx-icon">${origenIcon}</div>
         <div class="inbox-info">
           <div class="inbox-desc">${p.comercio || p.desc || 'Sin nombre'}</div>
-          <div class="inbox-meta">${fechaStr}</div>
+          <div class="inbox-meta">${fechaStr}${p.medio ? ' · ' + p.medio : ''}</div>
         </div>
         <div class="inbox-amount">${fmt(p.monto)}</div>
       </div>
+      ${p.posibleDuplicado ? '<div style="background:var(--warn-soft);color:var(--warn);font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;margin-bottom:10px;">⚠️ Podría ser un duplicado — revisa antes de registrar</div>' : ''}
       ${sugHtml}
     </div>`;
   });
@@ -965,7 +979,8 @@ function renderInbox() {
 function aceptarSugerencia(id, catId) {
   const p = pendientes.find(x => x.id === id);
   if (!p) return;
-  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: p.desc || '', usuario: DEFAULT_USER });
+  const descFinal = p.desc || sugerirDescripcion(p.comercio) || '';
+  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: DEFAULT_USER, medio: p.medio || 'TC' });
   db.ref('pendientes/' + id).remove();
   aprenderComercio(p.comercio, catId);
 }
@@ -995,6 +1010,7 @@ function saveGasto() {
   const comercio = document.getElementById('inputComercio').value.trim();
   const desc = document.getElementById('inputDesc').value.trim();
   const usuario = document.getElementById('inputUsuario').value;
+  const medio = document.getElementById('inputMedio').value;
   const editId = document.getElementById('editId').value;
   const pendId = document.getElementById('pendId').value;
   if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
@@ -1002,7 +1018,7 @@ function saveGasto() {
   if (!fecha) { alert('Selecciona una fecha'); return; }
   if (!comercio) { alert('Ingresa el comercio'); return; }
 
-  const data = { monto, fecha, comercio, cat: selectedCat, desc, usuario };
+  const data = { monto, fecha, comercio, cat: selectedCat, desc, usuario, medio };
   if (pendId) {
     db.ref('gastos').push(data);
     db.ref('pendientes/' + pendId).remove();
@@ -1057,6 +1073,21 @@ function sugerirCategoria(comercio) {
     if (labelLower.length >= 3 && comercioLower.includes(labelLower)) return c.id;
   }
   return null;
+}
+
+function sugerirDescripcion(comercio) {
+  if (!comercio) return null;
+  const comLower = comercio.toLowerCase();
+  const palabras = comLower.split(/\s+/).filter(w => w.length >= 3);
+  const candidatos = gastos.filter(g => {
+    if (!g.comercio || !g.desc) return false;
+    const gLower = g.comercio.toLowerCase();
+    if (gLower.includes(comLower) || comLower.includes(gLower)) return true;
+    return palabras.some(p => gLower.includes(p));
+  });
+  if (candidatos.length === 0) return null;
+  candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return candidatos[0].desc;
 }
 
 // ── GESTIÓN DE CATEGORÍAS ──
@@ -1125,11 +1156,11 @@ function reindexarComercios() {
 
 // ── EXPORTAR CSV ──
 function buildCSV() {
-  const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario']];
+  const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario','Medio']];
   const sorted = [...gastos].sort((a,b) => a.fecha.localeCompare(b.fecha));
   sorted.forEach(g => {
     const cat = CATEGORIAS.find(c => c.id === g.cat);
-    rows.push([g.fecha, g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '']);
+    rows.push([g.fecha, g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '', g.medio || '']);
   });
   return rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
 }
