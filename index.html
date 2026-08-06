@@ -383,6 +383,9 @@
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
     <button class="action-btn" onclick="reindexarComercios()"><span class="ic">🔄</span>Reindexar<br>sugerencias</button>
   </div>
+  <div class="action-row">
+    <button class="action-btn" onclick="completarMedioFaltante()"><span class="ic">💳</span>Completar<br>medio de pago</button>
+  </div>
 </div>
 
 <!-- FAB -->
@@ -644,7 +647,7 @@ function migrarDatosAntiguos() {
   const updates = {};
   oldGastos.forEach(g => {
     const newKey = db.ref('gastos').push().key;
-    updates[newKey] = { monto: g.monto, fecha: g.fecha, comercio: '', cat: g.cat, desc: g.desc || '', usuario: g.usuario || DEFAULT_USER };
+    updates[newKey] = { monto: g.monto, fecha: g.fecha, comercio: '', cat: g.cat, desc: g.desc || '', usuario: g.usuario || DEFAULT_USER, medio: 'TC' };
     aprenderComercio(g.desc, g.cat);
   });
   db.ref('gastos').update(updates).then(() => {
@@ -1154,6 +1157,16 @@ function reindexarComercios() {
   alert('Listo, se actualizaron las sugerencias con tu historial completo.');
 }
 
+function completarMedioFaltante() {
+  const faltantes = gastos.filter(g => !g.medio);
+  if (faltantes.length === 0) { alert('Todos los gastos ya tienen medio de pago asignado.'); return; }
+  if (!confirm(`Se encontraron ${faltantes.length} gastos sin "medio de pago". Se les asignará "TC" por defecto. Después puedes editar manualmente los que correspondan a Cuenta Corriente. ¿Continuar?`)) return;
+  faltantes.forEach(g => {
+    db.ref('gastos/' + g.id).update({ medio: 'TC' });
+  });
+  alert(`Listo, se completaron ${faltantes.length} gastos con "TC". Ahora edita manualmente los que sean CC.`);
+}
+
 // ── EXPORTAR CSV ──
 function buildCSV() {
   const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario','Medio']];
@@ -1307,7 +1320,7 @@ function selectClassifyCat(id) { classifySelectedCat = id; renderClassifyCatGrid
 function nextClassify() {
   if (!classifySelectedCat) { alert('Selecciona una categoría'); return; }
   const item = classifyQueue[classifyIndex];
-  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, comercio: item.desc, cat: classifySelectedCat, desc: '', usuario: DEFAULT_USER });
+  db.ref('gastos').push({ monto: item.monto, fecha: item.fecha, comercio: item.desc, cat: classifySelectedCat, desc: '', usuario: DEFAULT_USER, medio: 'TC' });
   aprenderComercio(item.desc, classifySelectedCat);
   classifyIndex++;
   showClassifyItem();
