@@ -1089,13 +1089,10 @@ function sugerirCategoria(comercio) {
 function sugerirDescripcion(comercio) {
   if (!comercio) return null;
   const comLower = comercio.toLowerCase().trim();
-  const palabras = palabrasSignificativas(comercio);
   const candidatos = gastos.filter(g => {
     if (!g.comercio || !g.desc) return false;
     const gLower = g.comercio.toLowerCase().trim();
-    if (gLower.includes(comLower) || comLower.includes(gLower)) return true;
-    const palabrasG = palabrasSignificativas(g.comercio);
-    return palabras.some(p => palabrasG.includes(p));
+    return gLower.includes(comLower) || comLower.includes(gLower);
   });
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
