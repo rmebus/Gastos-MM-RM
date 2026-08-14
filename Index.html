@@ -920,7 +920,7 @@ function openAssignModal(id) {
   document.getElementById('inputComercio').value = p.comercio || '';
   document.getElementById('inputDesc').value = p.desc || sugerirDescripcion(p.comercio) || '';
   document.getElementById('inputMonto').value = p.monto;
-  document.getElementById('inputUsuario').value = DEFAULT_USER;
+  document.getElementById('inputUsuario').value = p.usuarioSugerido || DEFAULT_USER;
   document.getElementById('inputMedio').value = p.medio || 'TC';
   let sug = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
   selectedCat = (sug && CATEGORIAS.find(c => c.id === sug)) ? sug : null;
@@ -983,7 +983,7 @@ function aceptarSugerencia(id, catId) {
   const p = pendientes.find(x => x.id === id);
   if (!p) return;
   const descFinal = p.desc || sugerirDescripcion(p.comercio) || '';
-  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: DEFAULT_USER, medio: p.medio || 'TC' });
+  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: p.usuarioSugerido || DEFAULT_USER, medio: p.medio || 'TC' });
   db.ref('pendientes/' + id).remove();
   aprenderComercio(p.comercio, catId);
 }
@@ -1016,7 +1016,7 @@ function saveGasto() {
   const medio = document.getElementById('inputMedio').value;
   const editId = document.getElementById('editId').value;
   const pendId = document.getElementById('pendId').value;
-  if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+  if (!monto || isNaN(monto)) { alert('Ingresa un monto válido'); return; }
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
   if (!comercio) { alert('Ingresa el comercio'); return; }
@@ -1044,9 +1044,17 @@ function deleteGasto(id) {
 }
 
 // ── SUGERENCIA DE CATEGORÍA POR COMERCIO ──
+const STOPWORDS_COMERCIO = new Set(['spa','ltda','sac','eirl','cia','com','sa','sac.','ltda.','chile','comercial','retail','store','stores','group','grupo','servicios','importadora','distribuidora']);
+
+function palabrasSignificativas(texto) {
+  return texto.toLowerCase().split(/\s+/)
+    .map(w => w.replace(/[.,]/g, ''))
+    .filter(w => w.length >= 4 && !STOPWORDS_COMERCIO.has(w));
+}
+
 function aprenderComercio(comercio, catId) {
   if (!comercio) return;
-  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  const palabras = palabrasSignificativas(comercio);
   palabras.forEach(p => { db.ref('comercios/' + encodeKey(p)).set(catId); });
 }
 function encodeKey(str) {
@@ -1055,7 +1063,7 @@ function encodeKey(str) {
 }
 function sugerirCategoria(comercio) {
   if (!comercio) return null;
-  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+  const palabras = palabrasSignificativas(comercio);
   for (const p of palabras) {
     const key = encodeKey(p);
     if (COMERCIOS[key]) return COMERCIOS[key];
@@ -1080,13 +1088,14 @@ function sugerirCategoria(comercio) {
 
 function sugerirDescripcion(comercio) {
   if (!comercio) return null;
-  const comLower = comercio.toLowerCase();
-  const palabras = comLower.split(/\s+/).filter(w => w.length >= 3);
+  const comLower = comercio.toLowerCase().trim();
+  const palabras = palabrasSignificativas(comercio);
   const candidatos = gastos.filter(g => {
     if (!g.comercio || !g.desc) return false;
-    const gLower = g.comercio.toLowerCase();
+    const gLower = g.comercio.toLowerCase().trim();
     if (gLower.includes(comLower) || comLower.includes(gLower)) return true;
-    return palabras.some(p => gLower.includes(p));
+    const palabrasG = palabrasSignificativas(g.comercio);
+    return palabras.some(p => palabrasG.includes(p));
   });
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
