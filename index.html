@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- VERSION: v2026-08-19a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -304,6 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
+  <div style="font-size:10px;color:var(--text3);margin-top:-4px;">v2026-08-19a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -386,6 +388,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="completarMedioFaltante()"><span class="ic">💳</span>Completar<br>medio de pago</button>
   </div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19a</div>
 </div>
 
 <!-- FAB -->
@@ -920,7 +923,7 @@ function openAssignModal(id) {
   document.getElementById('inputComercio').value = p.comercio || '';
   document.getElementById('inputDesc').value = p.desc || sugerirDescripcion(p.comercio) || '';
   document.getElementById('inputMonto').value = p.monto;
-  document.getElementById('inputUsuario').value = DEFAULT_USER;
+  document.getElementById('inputUsuario').value = p.usuarioSugerido || DEFAULT_USER;
   document.getElementById('inputMedio').value = p.medio || 'TC';
   let sug = (p.catSugerida && CATEGORIAS.find(c => c.id === p.catSugerida)) ? p.catSugerida : sugerirCategoria(p.comercio);
   selectedCat = (sug && CATEGORIAS.find(c => c.id === sug)) ? sug : null;
@@ -983,7 +986,7 @@ function aceptarSugerencia(id, catId) {
   const p = pendientes.find(x => x.id === id);
   if (!p) return;
   const descFinal = p.desc || sugerirDescripcion(p.comercio) || '';
-  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: DEFAULT_USER, medio: p.medio || 'TC' });
+  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: p.usuarioSugerido || DEFAULT_USER, medio: p.medio || 'TC' });
   db.ref('pendientes/' + id).remove();
   aprenderComercio(p.comercio, catId);
 }
@@ -1016,7 +1019,7 @@ function saveGasto() {
   const medio = document.getElementById('inputMedio').value;
   const editId = document.getElementById('editId').value;
   const pendId = document.getElementById('pendId').value;
-  if (!monto || monto <= 0) { alert('Ingresa un monto válido'); return; }
+  if (!monto || isNaN(monto)) { alert('Ingresa un monto válido'); return; }
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
   if (!comercio) { alert('Ingresa el comercio'); return; }
@@ -1044,10 +1047,26 @@ function deleteGasto(id) {
 }
 
 // ── SUGERENCIA DE CATEGORÍA POR COMERCIO ──
+const STOPWORDS_COMERCIO = new Set(['spa','ltda','sac','eirl','cia','com','sa','sac.','ltda.','chile','comercial','retail','store','stores','group','grupo','servicios','importadora','distribuidora','de','del','la','el','los','las','y']);
+
+function palabrasSignificativas(texto) {
+  return texto.toLowerCase().split(/\s+/)
+    .map(w => w.replace(/[.,]/g, ''))
+    .filter(w => w.length >= 4 && !STOPWORDS_COMERCIO.has(w));
+}
+
+// La "marca" de un comercio es su primera palabra significativa (ej. "Tottus"
+// en "Tottus Piedra Roja", "Dass" en "Dass Piedra Roja") — evita que dos
+// negocios distintos con el mismo mall/ubicación se confundan entre sí.
+function marcaComercio(comercio) {
+  const palabras = palabrasSignificativas(comercio || '');
+  return palabras[0] || (comercio || '').toLowerCase().trim();
+}
+
 function aprenderComercio(comercio, catId) {
   if (!comercio) return;
-  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
-  palabras.forEach(p => { db.ref('comercios/' + encodeKey(p)).set(catId); });
+  const marca = marcaComercio(comercio);
+  if (marca) db.ref('comercios/' + encodeKey(marca)).set(catId);
 }
 function encodeKey(str) {
   // Firebase no permite . # $ [ ] / en las llaves
@@ -1055,39 +1074,17 @@ function encodeKey(str) {
 }
 function sugerirCategoria(comercio) {
   if (!comercio) return null;
-  const palabras = comercio.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
-  for (const p of palabras) {
-    const key = encodeKey(p);
-    if (COMERCIOS[key]) return COMERCIOS[key];
-  }
-  // Respaldo 1: si no está en el diccionario, busca coincidencia directa
-  // en los gastos ya guardados (comercio o descripción)
-  for (const g of gastos) {
-    const texto = ((g.comercio || '') + ' ' + (g.desc || '')).toLowerCase();
-    for (const p of palabras) {
-      if (texto.includes(p)) return g.cat;
-    }
-  }
-  // Respaldo 2: si el nombre de una categoría aparece textualmente en el
-  // comercio (ej. "Farmacia Cruz Verde" contiene la palabra "Farmacia")
-  const comercioLower = comercio.toLowerCase();
-  for (const c of CATEGORIAS) {
-    const labelLower = c.label.toLowerCase();
-    if (labelLower.length >= 3 && comercioLower.includes(labelLower)) return c.id;
-  }
-  return null;
+  const comLower = comercio.toLowerCase().trim();
+  const candidatos = gastos.filter(g => g.comercio && g.comercio.toLowerCase().trim() === comLower);
+  if (candidatos.length === 0) return null;
+  candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  return candidatos[0].cat;
 }
 
 function sugerirDescripcion(comercio) {
   if (!comercio) return null;
-  const comLower = comercio.toLowerCase();
-  const palabras = comLower.split(/\s+/).filter(w => w.length >= 3);
-  const candidatos = gastos.filter(g => {
-    if (!g.comercio || !g.desc) return false;
-    const gLower = g.comercio.toLowerCase();
-    if (gLower.includes(comLower) || comLower.includes(gLower)) return true;
-    return palabras.some(p => gLower.includes(p));
-  });
+  const comLower = comercio.toLowerCase().trim();
+  const candidatos = gastos.filter(g => g.comercio && g.desc && g.comercio.toLowerCase().trim() === comLower);
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
   return candidatos[0].desc;
