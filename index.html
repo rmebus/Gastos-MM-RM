@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19i -->
+<!-- VERSION: v2026-08-19k -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -305,7 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19i</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19k</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -387,7 +387,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19i</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19k</div>
 </div>
 
 <!-- FAB -->
@@ -1337,11 +1337,45 @@ async function compararMovimientos(filasBancoTodas) {
   // Se compara CON signo (no valor absoluto) para que las devoluciones/notas de crédito calcen bien.
   const registrados = [...gastos, ...pendientes].map(g => ({
     fecha: g.fecha,
-    monto: Math.round(parseFloat(g.monto))
+    monto: Math.round(parseFloat(g.monto)),
+    comercio: g.comercio || ''
   }));
 
+  // El banco a veces reporta la compra UN DÍA DESPUÉS de la fecha real (proceso de
+  // liquidación) — nunca antes. Por eso solo se acepta fecha igual, o banco = app+1.
+  function sumarUnDia(fechaStr) {
+    const d = new Date(fechaStr + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  function fechaCompatible(fechaApp, fechaBanco) {
+    return fechaApp === fechaBanco || sumarUnDia(fechaApp) === fechaBanco;
+  }
+
+  // Palabras clave del comercio: se ignoran genéricas (SPA, COMPRA, LTDA) y ubicaciones
+  // que se repiten entre negocios distintos de la misma zona (Chicureo, Colina, etc.) —
+  // así, mismo monto + fecha cercana pero comercio realmente distinto NO se confunde.
+  const STOPWORDS_MATCH = new Set(['compra','devolucion','spa','ltda','sac','eirl','cia','com','sa','chile',
+    'comercial','retail','store','stores','online','app','chicureo','colina','piedra','roja','condes',
+    'lascondes','vitacura','providencia','santiago','barnechea','valle','alegre','norte','sur','centro']);
+  function palabrasClaveComercio(texto) {
+    return (texto || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4 && !STOPWORDS_MATCH.has(w));
+  }
+  function mismoComercio(a, b) {
+    const wa = palabrasClaveComercio(a);
+    const wb = palabrasClaveComercio(b);
+    if (wa.length === 0 || wb.length === 0) return false;
+    return wa.some(w => wb.includes(w));
+  }
+
   movimientosFaltantes = filasBanco.filter(f => {
-    return !registrados.some(r => r.fecha === f.fecha && r.monto === f.monto);
+    return !registrados.some(r =>
+      r.monto === f.monto && fechaCompatible(r.fecha, f.fecha) && mismoComercio(r.comercio, f.desc)
+    );
   });
 
   if (movimientosFaltantes.length === 0) {
