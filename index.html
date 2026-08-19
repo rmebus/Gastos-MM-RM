@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19g -->
+<!-- VERSION: v2026-08-19i -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -305,7 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19g</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19i</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -387,7 +387,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19g</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19i</div>
 </div>
 
 <!-- FAB -->
@@ -1092,10 +1092,24 @@ function encodeKey(str) {
   // Firebase no permite . # $ [ ] / en las llaves
   return str.replace(/[.#$\[\]\/]/g, '_');
 }
+// Limpia el "ruido" que agregan las distintas fuentes (banco, OCR) al nombre del
+// comercio, para que la comparación EXACTA no falle solo por eso: prefijos típicos
+// del banco ("COMPRA ", "DEVOLUCION COMPRA "), asterisco final, tildes, y espacios extra.
+function normalizarComercioComparacion(comercio) {
+  return (comercio || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita tildes
+    .replace(/^(devolucion\s+)?compra\s+/i, '')
+    .replace(/\*+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function sugerirCategoria(comercio) {
   if (!comercio) return null;
-  const comLower = comercio.toLowerCase().trim();
-  const candidatos = gastos.filter(g => g.comercio && g.comercio.toLowerCase().trim() === comLower);
+  const comNorm = normalizarComercioComparacion(comercio);
+  if (!comNorm) return null;
+  const candidatos = gastos.filter(g => g.comercio && normalizarComercioComparacion(g.comercio) === comNorm);
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
   return candidatos[0].cat;
@@ -1103,8 +1117,9 @@ function sugerirCategoria(comercio) {
 
 function sugerirDescripcion(comercio) {
   if (!comercio) return null;
-  const comLower = comercio.toLowerCase().trim();
-  const candidatos = gastos.filter(g => g.comercio && g.desc && g.comercio.toLowerCase().trim() === comLower);
+  const comNorm = normalizarComercioComparacion(comercio);
+  if (!comNorm) return null;
+  const candidatos = gastos.filter(g => g.comercio && g.desc && normalizarComercioComparacion(g.comercio) === comNorm);
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
   return candidatos[0].desc;
@@ -1301,7 +1316,10 @@ function detectarMovimientosBanco(json) {
 
 let movimientosFaltantes = [];
 
-function compararMovimientos(filasBancoTodas) {
+const WORKER_CATEGORIZAR_URL = 'https://gastos-telegram-bot.rmebusp.workers.dev/categorizar';
+const APP_SECRET = 'mmgastosapp2026_verif_9k2';
+
+async function compararMovimientos(filasBancoTodas) {
   if (filasBancoTodas.length === 0) {
     document.getElementById('verifyPreview').innerHTML = `<div class="no-data">No se detectaron movimientos válidos en el archivo.</div>`;
     return;
@@ -1326,21 +1344,46 @@ function compararMovimientos(filasBancoTodas) {
     return !registrados.some(r => r.fecha === f.fecha && r.monto === f.monto);
   });
 
-  let html = `<div class="section-title">${filasBanco.length} movimientos en el archivo del banco</div>`;
   if (movimientosFaltantes.length === 0) {
-    html += `<div class="no-data">✅ Todos los movimientos del archivo ya están en la app (como gasto clasificado o en el Inbox). No falta nada.</div>`;
-  } else {
-    html += `<div style="color:var(--danger,#f66);font-size:13px;margin-bottom:8px;">⚠️ Encontré ${movimientosFaltantes.length} movimiento(s) no ingresados:</div>`;
-    movimientosFaltantes.forEach(f => {
-      const tag = f.titular ? ` <span style="color:var(--text3);">· ${f.titular}</span>` : '';
-      html += `<div class="import-row">
-        <div class="import-row-top"><span class="imp-desc">${f.desc}${tag}</span><span class="imp-amount">${fmt(f.monto)}</span></div>
-        <div style="font-size:11px;color:var(--text3)">${f.fecha}</div>
-      </div>`;
-    });
-    html += `<div style="font-size:11px;color:var(--text3);margin:8px 0;">Comparación por fecha + monto (con signo) exactos.</div>
-    <button class="btn-save" onclick="aceptarVerificacion()">✓ Agregar ${movimientosFaltantes.length} al Inbox</button>`;
+    document.getElementById('verifyPreview').innerHTML = `<div class="section-title">${filasBanco.length} movimientos en el archivo del banco</div><div class="no-data">✅ Todos los movimientos del archivo ya están en la app (como gasto clasificado o en el Inbox). No falta nada.</div>`;
+    return;
   }
+
+  // Coincidencia local exacta primero (gratis, instantánea)
+  movimientosFaltantes.forEach(f => { f.catSugerida = sugerirCategoria(f.desc); });
+
+  // Para los que no tienen coincidencia local, se le pide a Claude que los clasifique por su cuenta
+  const sinCategoria = movimientosFaltantes.filter(f => !f.catSugerida);
+  if (sinCategoria.length > 0) {
+    document.getElementById('verifyPreview').innerHTML = `<div class="section-title">${filasBanco.length} movimientos en el archivo del banco</div><div class="no-data">🧠 Consultando categorías para ${sinCategoria.length} comercio(s) nuevo(s)...</div>`;
+    try {
+      const resp = await fetch(WORKER_CATEGORIZAR_URL, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ secret: APP_SECRET, comercios: sinCategoria.map(f => f.desc) })
+      }).then(r => r.json());
+      (resp.resultados || []).forEach((r, i) => { if (r.categoria) sinCategoria[i].catSugerida = r.categoria; });
+    } catch (e) {
+      // si falla la consulta a Claude, simplemente quedan sin sugerencia — no bloquea el flujo
+    }
+  }
+
+  renderVerifyPreview(filasBanco.length);
+}
+
+function renderVerifyPreview(totalBanco) {
+  let html = `<div class="section-title">${totalBanco} movimientos en el archivo del banco</div>`;
+  html += `<div style="color:var(--danger,#f66);font-size:13px;margin-bottom:8px;">⚠️ Encontré ${movimientosFaltantes.length} movimiento(s) no ingresados:</div>`;
+  movimientosFaltantes.forEach(f => {
+    const tag = f.titular ? ` <span style="color:var(--text3);">· ${f.titular}</span>` : '';
+      const catObj = f.catSugerida ? CATEGORIAS.find(c => c.id === f.catSugerida) : null;
+    const catTag = catObj ? ` <span style="color:var(--accent);">· ${catObj.icon} ${catObj.label}</span>` : ` <span style="color:var(--text3);">· sin categoría</span>`;
+    html += `<div class="import-row">
+      <div class="import-row-top"><span class="imp-desc">${f.desc}${tag}</span><span class="imp-amount">${fmt(f.monto)}</span></div>
+      <div style="font-size:11px;color:var(--text3)">${f.fecha}${catTag}</div>
+    </div>`;
+  });
+  html += `<div style="font-size:11px;color:var(--text3);margin:8px 0;">Comparación por fecha + monto (con signo) exactos.</div>
+  <button class="btn-save" onclick="aceptarVerificacion()">✓ Agregar ${movimientosFaltantes.length} al Inbox</button>`;
   document.getElementById('verifyPreview').innerHTML = html;
 }
 
@@ -1350,7 +1393,7 @@ function aceptarVerificacion() {
     const usuarioSugerido = (f.titular || '').toLowerCase() === 'adicional' ? 'Mayra' : null;
     db.ref('pendientes').push({
       fecha: f.fecha, comercio: f.desc, monto: f.monto, desc: '',
-      origen: 'verificacion', medio: 'TC', catSugerida: null, usuarioSugerido,
+      origen: 'verificacion', medio: 'TC', catSugerida: f.catSugerida || null, usuarioSugerido,
       posibleDuplicado: false, creado: new Date().toISOString()
     });
   });
