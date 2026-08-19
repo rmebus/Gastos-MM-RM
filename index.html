@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19a -->
+<!-- VERSION: v2026-08-19d -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -305,7 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:-4px;">v2026-08-19a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19d</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -382,13 +382,12 @@
     <button class="action-btn" onclick="sendEmailCSV()"><span class="ic">📧</span>Enviar por<br>correo</button>
   </div>
   <div class="action-row">
-    <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
-    <button class="action-btn" onclick="reindexarComercios()"><span class="ic">🔄</span>Reindexar<br>sugerencias</button>
+    <button class="action-btn" onclick="openVerifyModal()"><span class="ic">🔍</span>Verificar<br>movimientos mes</button>
   </div>
   <div class="action-row">
-    <button class="action-btn" onclick="completarMedioFaltante()"><span class="ic">💳</span>Completar<br>medio de pago</button>
+    <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19d</div>
 </div>
 
 <!-- FAB -->
@@ -485,6 +484,26 @@
     <div id="importActions" style="display:none">
       <button class="btn-save" onclick="confirmImport()">Importar y clasificar</button>
     </div>
+  </div>
+</div>
+
+<!-- MODAL: VERIFICAR MOVIMIENTOS DEL MES -->
+<div class="modal-overlay" id="verifyModalOverlay" onclick="closeModalOutside(event, 'verifyModalOverlay')">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-header">
+      <h2>Verificar movimientos del mes</h2>
+      <button class="modal-close" onclick="document.getElementById('verifyModalOverlay').classList.remove('open')">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Sube el archivo de "movimientos no facturados" del banco (mes en curso) y te muestro cuáles no encuentro en la app — no se agrega nada automáticamente.</div>
+    <div class="field">
+      <label>Archivo (.xlsx, .xls, .csv)</label>
+      <div class="file-input-wrap action-btn" style="width:100%">
+        <span class="ic">📂</span> Seleccionar archivo
+        <input type="file" id="verifyFileInput" accept=".xlsx,.xls,.csv" onchange="handleVerifyFile(event)">
+      </div>
+    </div>
+    <div id="verifyPreview"></div>
   </div>
 </div>
 
@@ -1224,9 +1243,113 @@ function handleFile(event) {
   reader.readAsArrayBuffer(file);
 }
 
-function parseRows(json) {
+function openVerifyModal() {
+  document.getElementById('verifyPreview').innerHTML = '';
+  document.getElementById('verifyFileInput').value = '';
+  document.getElementById('verifyModalOverlay').classList.add('open');
+}
+
+function handleVerifyFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, dateNF: 'yyyy-mm-dd' });
+      const filas = detectarMovimientosBanco(json);
+      compararMovimientos(filas);
+    } catch (err) {
+      document.getElementById('verifyPreview').innerHTML = `<div class="no-data">Error leyendo archivo: ${err.message}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Parser específico para el export del banco: columnas fijas
+// FECHA | DESCRIPCION | TITULAR/ADICIONAL | MONTO | CUOTAS PENDIENTES | VALOR CUOTA
+// Usa VALOR CUOTA (con signo) en vez de MONTO: para compras en cuotas es el cargo real
+// de este mes, y para devoluciones viene con signo negativo (MONTO siempre es positivo).
+function detectarMovimientosBanco(json) {
+  const filas = [];
+  json.forEach(row => {
+    if (!row || row.length < 6) return;
+    const fechaStr = String(row[0] || '').trim();
+    let fecha = '';
+    if (/^\d{4}-\d{2}-\d{2}/.test(fechaStr)) fecha = fechaStr.slice(0, 10);
+    else if (/^\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}$/.test(fechaStr)) fecha = normalizeDate(fechaStr);
+    else return; // no es una fila de datos (ej. encabezado)
+
+    const desc = String(row[1] || '').trim();
+    if (!desc) return;
+    const descUpper = desc.toUpperCase();
+    if (descUpper.includes('PAGO CON CHEQUE') || descUpper.includes('PAGO TARJETA DE CR')) return; // pago de la tarjeta, no es gasto
+
+    const titular = String(row[2] || '').trim();
+    const valorCuotaStr = String(row[5] || '').trim();
+    const monto = parseFloat(valorCuotaStr.replace(/\$/g, '').replace(/\./g, '').replace(/,/g, '.'));
+    if (isNaN(monto) || monto === 0) return;
+
+    filas.push({ desc, monto: Math.round(monto), fecha, titular });
+  });
+  return filas;
+}
+
+let movimientosFaltantes = [];
+
+function compararMovimientos(filasBanco) {
+  if (filasBanco.length === 0) {
+    document.getElementById('verifyPreview').innerHTML = `<div class="no-data">No se detectaron movimientos válidos en el archivo.</div>`;
+    return;
+  }
+  // Todo lo que ya está registrado este mes en la app (gastos clasificados + pendientes del Inbox cuentan como "ya capturado")
+  // Se compara CON signo (no valor absoluto) para que las devoluciones/notas de crédito calcen bien.
+  const registrados = [...gastos, ...pendientes].map(g => ({
+    fecha: g.fecha,
+    monto: Math.round(parseFloat(g.monto))
+  }));
+
+  movimientosFaltantes = filasBanco.filter(f => {
+    return !registrados.some(r => r.fecha === f.fecha && r.monto === f.monto);
+  });
+
+  let html = `<div class="section-title">${filasBanco.length} movimientos en el archivo del banco</div>`;
+  if (movimientosFaltantes.length === 0) {
+    html += `<div class="no-data">✅ Todos los movimientos del archivo ya están en la app (como gasto clasificado o en el Inbox). No falta nada.</div>`;
+  } else {
+    html += `<div style="color:var(--danger,#f66);font-size:13px;margin-bottom:8px;">⚠️ Encontré ${movimientosFaltantes.length} movimiento(s) no ingresados:</div>`;
+    movimientosFaltantes.forEach(f => {
+      const tag = f.titular ? ` <span style="color:var(--text3);">· ${f.titular}</span>` : '';
+      html += `<div class="import-row">
+        <div class="import-row-top"><span class="imp-desc">${f.desc}${tag}</span><span class="imp-amount">${fmt(f.monto)}</span></div>
+        <div style="font-size:11px;color:var(--text3)">${f.fecha}</div>
+      </div>`;
+    });
+    html += `<div style="font-size:11px;color:var(--text3);margin:8px 0;">Comparación por fecha + monto (con signo) exactos.</div>
+    <button class="btn-save" onclick="aceptarVerificacion()">✓ Agregar ${movimientosFaltantes.length} al Inbox</button>`;
+  }
+  document.getElementById('verifyPreview').innerHTML = html;
+}
+
+function aceptarVerificacion() {
+  if (movimientosFaltantes.length === 0) return;
+  movimientosFaltantes.forEach(f => {
+    const usuarioSugerido = (f.titular || '').toLowerCase() === 'adicional' ? 'Mayra' : null;
+    db.ref('pendientes').push({
+      fecha: f.fecha, comercio: f.desc, monto: f.monto, desc: '',
+      origen: 'verificacion', medio: 'TC', catSugerida: null, usuarioSugerido,
+      posibleDuplicado: false, creado: new Date().toISOString()
+    });
+  });
+  document.getElementById('verifyPreview').innerHTML = `<div class="no-data">✅ Se agregaron ${movimientosFaltantes.length} movimiento(s) al Inbox.</div>`;
+  movimientosFaltantes = [];
+}
+
+function detectarMovimientos(json) {
   // Intenta detectar columnas: busca filas con fecha, descripción, monto
-  importedRows = [];
+  const filas = [];
   json.forEach(row => {
     if (!row || row.length < 2) return;
     // Buscar un valor que parezca número (monto) y uno que parezca fecha o texto
@@ -1234,19 +1357,32 @@ function parseRows(json) {
     row.forEach(cell => {
       if (cell === undefined || cell === null || cell === '') return;
       const str = String(cell).trim();
-      const num = parseFloat(str.replace(/\$/g,'').replace(/\./g,'').replace(/,/g,'.'));
-      if (!isNaN(num) && Math.abs(num) > 0 && monto === null && /^[\d.,$\-\s]+$/.test(str)) {
-        monto = Math.abs(num);
-      } else if (/^\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}$/.test(str) || /^\d{4}-\d{2}-\d{2}/.test(str)) {
+      // La fecha se revisa PRIMERO: un texto tipo "2026-08-18" también calza con el
+      // patrón numérico de más abajo (parseFloat lo lee como "2026"), así que si no
+      // se prioriza la fecha, el año terminaba usándose por error como monto.
+      if (/^\d{1,4}[\/\-]\d{1,2}[\/\-]\d{1,4}$/.test(str) || /^\d{4}-\d{2}-\d{2}/.test(str)) {
         fecha = normalizeDate(str);
-      } else {
-        desc = desc ? desc + ' ' + str : str;
+        return;
       }
+      const num = parseFloat(str.replace(/\$/g,'').replace(/\./g,'').replace(/,/g,'.'));
+      const esNumerico = !isNaN(num) && /^[\d.,$\-\s]+$/.test(str);
+      if (esNumerico) {
+        // Solo el PRIMER número encontrado se usa como monto; cualquier otra celda
+        // numérica (ej. cuotas, valor cuota) se ignora, nunca se pega a la descripción.
+        if (monto === null && Math.abs(num) > 0) monto = Math.abs(num);
+        return;
+      }
+      desc = desc ? desc + ' ' + str : str;
     });
     if (monto !== null) {
-      importedRows.push({ desc: desc || 'Movimiento', monto, fecha: fecha || new Date().toISOString().split('T')[0] });
+      filas.push({ desc: desc || 'Movimiento', monto, fecha: fecha || new Date().toISOString().split('T')[0] });
     }
   });
+  return filas;
+}
+
+function parseRows(json) {
+  importedRows = detectarMovimientos(json);
 
   if (importedRows.length === 0) {
     document.getElementById('importPreview').innerHTML = `<div class="no-data">No se detectaron movimientos válidos en el archivo.</div>`;
