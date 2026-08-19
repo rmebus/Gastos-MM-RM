@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19d -->
+<!-- VERSION: v2026-08-19e -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -305,7 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19d</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19e</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -387,7 +387,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19d</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19e</div>
 </div>
 
 <!-- FAB -->
@@ -495,7 +495,7 @@
       <h2>Verificar movimientos del mes</h2>
       <button class="modal-close" onclick="document.getElementById('verifyModalOverlay').classList.remove('open')">✕</button>
     </div>
-    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Sube el archivo de "movimientos no facturados" del banco (mes en curso) y te muestro cuáles no encuentro en la app — no se agrega nada automáticamente.</div>
+    <div id="verifyIntroText" style="font-size:12px;color:var(--text3);margin-bottom:10px;">Sube el archivo de "movimientos no facturados" del banco y te muestro cuáles del mes abierto en la app no encuentro — no se agrega nada automáticamente.</div>
     <div class="field">
       <label>Archivo (.xlsx, .xls, .csv)</label>
       <div class="file-input-wrap action-btn" style="width:100%">
@@ -1246,6 +1246,7 @@ function handleFile(event) {
 function openVerifyModal() {
   document.getElementById('verifyPreview').innerHTML = '';
   document.getElementById('verifyFileInput').value = '';
+  document.getElementById('verifyIntroText').textContent = `Voy a revisar solo los movimientos de ${MESES[viewMonth]} ${viewYear} (el mes que tienes abierto). Sube el archivo del banco y te muestro cuáles no encuentro en la app — no se agrega nada automáticamente.`;
   document.getElementById('verifyModalOverlay').classList.add('open');
 }
 
@@ -1299,11 +1300,20 @@ function detectarMovimientosBanco(json) {
 
 let movimientosFaltantes = [];
 
-function compararMovimientos(filasBanco) {
-  if (filasBanco.length === 0) {
+function compararMovimientos(filasBancoTodas) {
+  if (filasBancoTodas.length === 0) {
     document.getElementById('verifyPreview').innerHTML = `<div class="no-data">No se detectaron movimientos válidos en el archivo.</div>`;
     return;
   }
+  // Solo se revisa el mes que está abierto en la app ahora mismo (viewYear/viewMonth)
+  const mesStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}`;
+  const filasBanco = filasBancoTodas.filter(f => f.fecha.startsWith(mesStr));
+
+  if (filasBanco.length === 0) {
+    document.getElementById('verifyPreview').innerHTML = `<div class="no-data">El archivo no tiene movimientos de ${MESES[viewMonth]} ${viewYear} (el mes que tienes abierto en la app). Cambia de mes o sube el archivo correspondiente.</div>`;
+    return;
+  }
+
   // Todo lo que ya está registrado este mes en la app (gastos clasificados + pendientes del Inbox cuentan como "ya capturado")
   // Se compara CON signo (no valor absoluto) para que las devoluciones/notas de crédito calcen bien.
   const registrados = [...gastos, ...pendientes].map(g => ({
