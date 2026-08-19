@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19f -->
+<!-- VERSION: v2026-08-19g -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -305,7 +305,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19f</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19g</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -387,7 +387,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19f</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19g</div>
 </div>
 
 <!-- FAB -->
@@ -624,6 +624,7 @@ const DEFAULT_CATEGORIAS = [
 ];
 
 let CATEGORIAS = [];
+const MESES_GLOBAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 let COMERCIOS = {}; // diccionario de sugerencia: palabra -> categoria id
 
 function saveCategorias() {
@@ -1246,7 +1247,7 @@ function handleFile(event) {
 function openVerifyModal() {
   document.getElementById('verifyPreview').innerHTML = '';
   document.getElementById('verifyFileInput').value = '';
-  document.getElementById('verifyIntroText').textContent = `Voy a revisar solo los movimientos de ${MESES[viewMonth]} ${viewYear} (el mes que tienes abierto). Sube el archivo del banco y te muestro cuáles no encuentro en la app — no se agrega nada automáticamente.`;
+  document.getElementById('verifyIntroText').textContent = `Voy a revisar solo los movimientos de ${MESES_GLOBAL[viewMonth]} ${viewYear} (el mes que tienes abierto). Sube el archivo del banco y te muestro cuáles no encuentro en la app — no se agrega nada automáticamente.`;
   document.getElementById('verifyModalOverlay').classList.add('open');
 }
 
@@ -1310,7 +1311,7 @@ function compararMovimientos(filasBancoTodas) {
   const filasBanco = filasBancoTodas.filter(f => f.fecha.startsWith(mesStr));
 
   if (filasBanco.length === 0) {
-    document.getElementById('verifyPreview').innerHTML = `<div class="no-data">El archivo no tiene movimientos de ${MESES[viewMonth]} ${viewYear} (el mes que tienes abierto en la app). Cambia de mes o sube el archivo correspondiente.</div>`;
+    document.getElementById('verifyPreview').innerHTML = `<div class="no-data">El archivo no tiene movimientos de ${MESES_GLOBAL[viewMonth]} ${viewYear} (el mes que tienes abierto en la app). Cambia de mes o sube el archivo correspondiente.</div>`;
     return;
   }
 
