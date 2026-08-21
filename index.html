@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-21a -->
+<!-- VERSION: v2026-08-21b -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -125,9 +125,8 @@
   .week-box .w-label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
   .week-box .w-amount { font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
   .week-box .w-budget { font-size: 9px; color: var(--text3); margin-top: 1px; }
-  .week-box .w-cat-breakdown { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
-  .week-box .w-cat-line { display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: var(--text3); margin-top: 2px; gap: 2px; }
-  .week-box .w-cat-line .w-cat-val { font-family: 'JetBrains Mono', monospace; color: var(--text2); font-size: 8.5px; }
+  .week-strip.sub .week-box { padding: 8px 4px; }
+  .week-strip.sub .w-amount { font-size: 12px; }
 
   .section-title { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
   .section-title .link { color: var(--accent); text-transform: none; font-size: 12px; cursor: pointer; font-weight: 600; }
@@ -309,7 +308,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-21a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-21b</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -352,6 +351,12 @@
 
   <div class="section-title">Semana a semana</div>
   <div class="week-strip" id="weekStrip"></div>
+
+  <div class="section-title" id="labelSuperSemana" style="font-size:13px;color:var(--text2);margin-top:6px;">🛒 Supermercado — semana a semana</div>
+  <div class="week-strip sub" id="weekStripSuper"></div>
+
+  <div class="section-title" id="labelSalidaSemana" style="font-size:13px;color:var(--text2);margin-top:6px;">🍽️ Salida — semana a semana</div>
+  <div class="week-strip sub" id="weekStripSalida"></div>
 </div>
 
 <!-- CATEGORÍAS -->
@@ -391,7 +396,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-21a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-21b</div>
 </div>
 
 <!-- FAB -->
@@ -805,8 +810,13 @@ function updateAll() {
 
   const catSuper = CATEGORIAS.find(c => c.id === 'super');
   const catSalida = CATEGORIAS.find(c => c.id === 'salida');
+  const superBudget = catSuper ? Math.round((catSuper.budget / diasMes) * 7) : 0;
+  const salidaBudget = catSalida ? Math.round((catSalida.budget / diasMes) * 7) : 0;
 
-  let weekHtml = '';
+  if (catSuper) document.getElementById('labelSuperSemana').textContent = `${catSuper.icon} ${catSuper.label} — semana a semana`;
+  if (catSalida) document.getElementById('labelSalidaSemana').textContent = `${catSalida.icon} ${catSalida.label} — semana a semana`;
+
+  let weekHtml = '', weekHtmlSuper = '', weekHtmlSalida = '';
   for (let w = 1; w <= weeksInMonth; w++) {
     const wGastos = mg.filter(g => getWeekNumber(g.fecha) === w);
     const wTotal = wGastos.reduce((s,g) => s+g.monto, 0);
@@ -814,17 +824,30 @@ function updateAll() {
     const wSalida = wGastos.filter(g => g.cat === 'salida').reduce((s,g) => s+g.monto, 0);
     const isCurrentW = w === currentWeek;
     const wColor = wTotal > weekBudget ? 'var(--danger)' : wTotal > weekBudget * 0.8 ? 'var(--warn)' : 'var(--ok)';
-    let breakdownHtml = '';
-    if (catSuper) breakdownHtml += `<div class="w-cat-line"><span>${catSuper.icon}</span><span class="w-cat-val">${fmt(wSuper)}</span></div>`;
-    if (catSalida) breakdownHtml += `<div class="w-cat-line"><span>${catSalida.icon}</span><span class="w-cat-val">${fmt(wSalida)}</span></div>`;
+    const wColorSuper = wSuper > superBudget ? 'var(--danger)' : wSuper > superBudget * 0.8 ? 'var(--warn)' : 'var(--ok)';
+    const wColorSalida = wSalida > salidaBudget ? 'var(--danger)' : wSalida > salidaBudget * 0.8 ? 'var(--warn)' : 'var(--ok)';
+
     weekHtml += `<div class="week-box ${isCurrentW ? 'current' : ''}">
       <div class="w-label">S${w}</div>
       <div class="w-amount" style="color:${wColor}">${fmt(wTotal)}</div>
       <div class="w-budget">${fmt(weekBudget)}</div>
-      <div class="w-cat-breakdown">${breakdownHtml}</div>
+    </div>`;
+
+    weekHtmlSuper += `<div class="week-box ${isCurrentW ? 'current' : ''}">
+      <div class="w-label">S${w}</div>
+      <div class="w-amount" style="color:${wColorSuper}">${fmt(wSuper)}</div>
+      <div class="w-budget">${fmt(superBudget)}</div>
+    </div>`;
+
+    weekHtmlSalida += `<div class="week-box ${isCurrentW ? 'current' : ''}">
+      <div class="w-label">S${w}</div>
+      <div class="w-amount" style="color:${wColorSalida}">${fmt(wSalida)}</div>
+      <div class="w-budget">${fmt(salidaBudget)}</div>
     </div>`;
   }
   document.getElementById('weekStrip').innerHTML = weekHtml;
+  document.getElementById('weekStripSuper').innerHTML = weekHtmlSuper;
+  document.getElementById('weekStripSalida').innerHTML = weekHtmlSalida;
 
   let catHtml = '';
   CATEGORIAS.forEach(cat => {
