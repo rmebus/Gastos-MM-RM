@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-19k -->
+<!-- VERSION: v2026-08-21a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -125,6 +125,9 @@
   .week-box .w-label { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
   .week-box .w-amount { font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
   .week-box .w-budget { font-size: 9px; color: var(--text3); margin-top: 1px; }
+  .week-box .w-cat-breakdown { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); }
+  .week-box .w-cat-line { display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: var(--text3); margin-top: 2px; gap: 2px; }
+  .week-box .w-cat-line .w-cat-val { font-family: 'JetBrains Mono', monospace; color: var(--text2); font-size: 8.5px; }
 
   .section-title { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
   .section-title .link { color: var(--accent); text-transform: none; font-size: 12px; cursor: pointer; font-weight: 600; }
@@ -253,6 +256,7 @@
     border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px;
   }
   .cat-manage-row input[type=text] { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 10px; font-size: 13px; }
+  .cat-manage-row input.icon-input { flex: 0 0 40px; width: 40px; text-align: center; font-size: 17px; padding: 8px 4px; }
   .cat-manage-row input[type=number] { width: 90px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 8px 8px; font-size: 12px; font-family: 'JetBrains Mono', monospace; }
   .cat-manage-row .del-cat { background: none; border: none; color: var(--text3); font-size: 16px; cursor: pointer; }
 
@@ -305,7 +309,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-19k</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-21a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -387,7 +391,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-19k</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-21a</div>
 </div>
 
 <!-- FAB -->
@@ -457,9 +461,11 @@
     <div class="field" style="margin-top:16px">
       <label>Nueva categoría</label>
       <div style="display:flex;gap:8px">
+        <input type="text" id="newCatIcon" placeholder="🏷️" maxlength="4" style="width:52px;flex:0 0 52px;text-align:center;font-size:18px;padding:12px 6px;">
         <input type="text" id="newCatName" placeholder="Nombre" style="flex:1">
-        <input type="number" id="newCatBudget" placeholder="Presupuesto" style="width:110px">
+        <input type="number" id="newCatBudget" placeholder="Presupuesto" style="width:100px">
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Toca el cuadro del ícono y usa el emoji 😀 de tu teclado para elegir uno</div>
     </div>
     <button class="btn-save" onclick="addCategory()">Agregar categoría</button>
   </div>
@@ -797,16 +803,25 @@ function updateAll() {
   const weeksInMonth = Math.ceil(diasMes / 7);
   const currentWeek = isCurrentMonth ? getWeekNumber(currentDate.toISOString().split('T')[0]) : -1;
 
+  const catSuper = CATEGORIAS.find(c => c.id === 'super');
+  const catSalida = CATEGORIAS.find(c => c.id === 'salida');
+
   let weekHtml = '';
   for (let w = 1; w <= weeksInMonth; w++) {
     const wGastos = mg.filter(g => getWeekNumber(g.fecha) === w);
     const wTotal = wGastos.reduce((s,g) => s+g.monto, 0);
+    const wSuper = wGastos.filter(g => g.cat === 'super').reduce((s,g) => s+g.monto, 0);
+    const wSalida = wGastos.filter(g => g.cat === 'salida').reduce((s,g) => s+g.monto, 0);
     const isCurrentW = w === currentWeek;
     const wColor = wTotal > weekBudget ? 'var(--danger)' : wTotal > weekBudget * 0.8 ? 'var(--warn)' : 'var(--ok)';
+    let breakdownHtml = '';
+    if (catSuper) breakdownHtml += `<div class="w-cat-line"><span>${catSuper.icon}</span><span class="w-cat-val">${fmt(wSuper)}</span></div>`;
+    if (catSalida) breakdownHtml += `<div class="w-cat-line"><span>${catSalida.icon}</span><span class="w-cat-val">${fmt(wSalida)}</span></div>`;
     weekHtml += `<div class="week-box ${isCurrentW ? 'current' : ''}">
       <div class="w-label">S${w}</div>
       <div class="w-amount" style="color:${wColor}">${fmt(wTotal)}</div>
       <div class="w-budget">${fmt(weekBudget)}</div>
+      <div class="w-cat-breakdown">${breakdownHtml}</div>
     </div>`;
   }
   document.getElementById('weekStrip').innerHTML = weekHtml;
@@ -820,7 +835,7 @@ function updateAll() {
     else if (pctCat >= 80) { badge = 'Cerca'; badgeClass = 'badge-warn'; }
     else { badge = 'OK'; badgeClass = 'badge-ok'; }
     const barColor = pctCat >= 100 ? 'var(--danger)' : pctCat >= 80 ? 'var(--warn)' : 'var(--ok)';
-    catHtml += `<div class="cat-row">
+    catHtml += `<div class="cat-row" onclick="irAGastosFiltrado('${cat.id}')" style="cursor:pointer;">
       <div class="cat-row-top">
         <div class="cat-name"><span class="cat-icon">${cat.icon}</span>${cat.label}</div>
         <div class="cat-amounts">
@@ -835,6 +850,12 @@ function updateAll() {
   document.getElementById('catList').innerHTML = catHtml || '<div class="no-data">Sin categorías</div>';
 
   renderTx(mg);
+}
+
+function irAGastosFiltrado(catId) {
+  filterCat = catId;
+  switchTab('gastos', document.querySelectorAll('.tab')[2]);
+  renderTx(getMonthGastos());
 }
 
 function renderTx(mg) {
@@ -1134,7 +1155,7 @@ function renderCatManageList() {
   let html = '';
   CATEGORIAS.forEach((cat, i) => {
     html += `<div class="cat-manage-row">
-      <span style="font-size:18px">${cat.icon}</span>
+      <input type="text" class="icon-input" value="${cat.icon}" maxlength="4" onchange="updateCatField(${i}, 'icon', this.value || '🏷️')">
       <input type="text" value="${cat.label}" onchange="updateCatField(${i}, 'label', this.value)">
       <input type="number" value="${cat.budget}" onchange="updateCatField(${i}, 'budget', parseFloat(this.value)||0)">
       <button class="del-cat" onclick="deleteCat(${i})">✕</button>
@@ -1157,10 +1178,12 @@ function deleteCat(i) {
 function addCategory() {
   const name = document.getElementById('newCatName').value.trim();
   const budget = parseFloat(document.getElementById('newCatBudget').value) || 0;
+  const icon = document.getElementById('newCatIcon').value.trim() || '🏷️';
   if (!name) { alert('Ingresa un nombre de categoría'); return; }
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '_' + Date.now().toString().slice(-4);
-  CATEGORIAS.push({ id, label: name, icon: '🏷️', budget });
+  CATEGORIAS.push({ id, label: name, icon, budget });
   saveCategorias();
+  document.getElementById('newCatIcon').value = '';
   document.getElementById('newCatName').value = '';
   document.getElementById('newCatBudget').value = '';
   renderCatManageList();
