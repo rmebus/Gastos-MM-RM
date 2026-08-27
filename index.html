@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-21f -->
+<!-- VERSION: v2026-08-25a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -312,7 +312,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-21f</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-25a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -400,7 +400,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-21f</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-25a</div>
 </div>
 
 <!-- FAB -->
@@ -820,8 +820,18 @@ function updateAll() {
   const superBudget = catSuper ? Math.round(catSuper.budget / 4) : 0;
   const salidaBudget = catSalida ? Math.round(catSalida.budget / 4) : 0;
 
-  if (catSuper) document.getElementById('labelSuperSemana').textContent = `${catSuper.icon} ${catSuper.label} — semana a semana`;
-  if (catSalida) document.getElementById('labelSalidaSemana').textContent = `${catSalida.icon} ${catSalida.label} — semana a semana`;
+  const superSpentMes = mg.filter(g => g.cat === 'super').reduce((s,g) => s+g.monto, 0);
+  const salidaSpentMes = mg.filter(g => g.cat === 'salida').reduce((s,g) => s+g.monto, 0);
+  if (catSuper) {
+    const saldoSuper = Math.round(catSuper.budget - superSpentMes);
+    const colorSuper = saldoSuper < 0 ? 'var(--danger)' : 'var(--ok)';
+    document.getElementById('labelSuperSemana').innerHTML = `${catSuper.icon} ${catSuper.label} / <span style="color:${colorSuper}">${saldoSuper.toLocaleString('es-CL')}</span>`;
+  }
+  if (catSalida) {
+    const saldoSalida = Math.round(catSalida.budget - salidaSpentMes);
+    const colorSalida = saldoSalida < 0 ? 'var(--danger)' : 'var(--ok)';
+    document.getElementById('labelSalidaSemana').innerHTML = `${catSalida.icon} ${catSalida.label} / <span style="color:${colorSalida}">${saldoSalida.toLocaleString('es-CL')}</span>`;
+  }
 
   let weekHtml = '', weekHtmlSuper = '', weekHtmlSalida = '';
   for (let w = 1; w <= weeksInMonth; w++) {
@@ -1081,6 +1091,20 @@ function renderCatGrid() {
 }
 function selectCat(id) { selectedCat = id; renderCatGrid(); }
 
+function buscarPosibleDuplicadoManual(fecha, monto) {
+  const montoR = Math.round(monto);
+  function diasDif(f1, f2) {
+    const d1 = new Date(f1 + 'T00:00:00');
+    const d2 = new Date(f2 + 'T00:00:00');
+    return Math.abs((d1 - d2) / 86400000);
+  }
+  const enGastos = gastos.find(g => Math.round(parseFloat(g.monto)) === montoR && diasDif(g.fecha, fecha) <= 1);
+  if (enGastos) return { ...enGastos, origenTexto: 'Ya en Gastos' };
+  const enPendientes = pendientes.find(p => Math.round(parseFloat(p.monto)) === montoR && diasDif(p.fecha, fecha) <= 1);
+  if (enPendientes) return { ...enPendientes, origenTexto: 'Pendiente en el Inbox' };
+  return null;
+}
+
 function saveGasto() {
   const monto = parseFloat(document.getElementById('inputMonto').value);
   const fecha = document.getElementById('inputFecha').value;
@@ -1094,6 +1118,18 @@ function saveGasto() {
   if (!selectedCat) { alert('Selecciona una categoría'); return; }
   if (!fecha) { alert('Selecciona una fecha'); return; }
   if (!comercio) { alert('Ingresa el comercio'); return; }
+
+  // Solo para ingresos manuales NUEVOS (no al editar ni al aceptar del Inbox, que
+  // ya tienen su propio origen conocido): avisa si hay algo parecido por fecha
+  // (±1 día) y monto — sin comparar comercio, porque a mano puede escribirse muy
+  // distinto a como quedó capturado por otra vía.
+  if (!pendId && !editId) {
+    const duplicado = buscarPosibleDuplicadoManual(fecha, monto);
+    if (duplicado) {
+      const msg = `Ya hay algo parecido registrado (misma fecha aprox. y monto):\n\n${duplicado.origenTexto}: ${duplicado.comercio || '(sin comercio)'} · ${fmt(duplicado.monto)} · ${duplicado.fecha}\n\n¿Agregar este de todas formas?`;
+      if (!confirm(msg)) return;
+    }
+  }
 
   const data = { monto, fecha, comercio, cat: selectedCat, desc, usuario, medio };
   if (pendId) {
