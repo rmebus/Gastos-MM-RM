@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-28a -->
+<!-- VERSION: v2026-08-31a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -40,12 +40,14 @@
     padding-bottom: 80px;
   }
 
-  .header {
-    padding: 20px 20px 0;
+  .sticky-top-wrap {
     position: sticky;
     top: 0;
     background: var(--bg);
     z-index: 10;
+  }
+  .header {
+    padding: 20px 20px 0;
     border-bottom: 1px solid var(--border);
     padding-bottom: 12px;
   }
@@ -307,12 +309,13 @@
 
 <!-- APP (oculta hasta login) -->
 <div id="appRoot" style="display:none;">
+<div class="sticky-top-wrap">
 <div class="header">
   <div class="header-top">
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-28a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-31a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -326,6 +329,7 @@
   <button class="tab" onclick="switchTab('gastos', this)">Gastos</button>
   <button class="tab" onclick="switchTab('inbox', this)">Inbox<span id="pendBadge" style="display:none;background:var(--danger);color:white;border-radius:10px;font-size:10px;padding:1px 6px;margin-left:4px;"></span></button>
   <button class="tab" onclick="switchTab('mas', this)">Más</button>
+</div>
 </div>
 
 <div id="migrationBanner" style="display:none;margin:16px 20px 0;background:var(--warn-soft);border:1px solid var(--warn);border-radius:var(--radius-sm);padding:14px;">
@@ -400,7 +404,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-28a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-31a</div>
 </div>
 
 <!-- FAB -->
@@ -1291,7 +1295,7 @@ function completarMedioFaltante() {
 // ── EXPORTAR CSV ──
 function buildCSV() {
   const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario','Medio']];
-  const sorted = [...gastos].sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const sorted = [...getMonthGastos()].sort((a,b) => a.fecha.localeCompare(b.fecha));
   sorted.forEach(g => {
     const cat = CATEGORIAS.find(c => c.id === g.cat);
     rows.push([g.fecha, g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '', g.medio || '']);
@@ -1306,8 +1310,10 @@ function exportCSV() {
   const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   a.href = url;
   a.download = `gastos_${MESES[viewMonth]}_${viewYear}.csv`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function sendEmailCSV() {
   exportCSV();
