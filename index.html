@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-08-31a -->
+<!-- VERSION: v2026-09-12a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -315,7 +315,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-08-31a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-09-12a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -404,7 +404,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-08-31a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-09-12a</div>
 </div>
 
 <!-- FAB -->
@@ -434,9 +434,15 @@
       <label>Monto ($)</label>
       <input type="number" id="inputMonto" placeholder="0" inputmode="numeric">
     </div>
-    <div class="field">
-      <label>Fecha</label>
-      <input type="date" id="inputFecha">
+    <div class="field" style="display:flex;gap:8px;">
+      <div style="flex:1">
+        <label>Fecha</label>
+        <input type="date" id="inputFecha">
+      </div>
+      <div style="width:110px">
+        <label>Hora</label>
+        <input type="time" id="inputHora">
+      </div>
     </div>
     <div class="field">
       <label>Usuario</label>
@@ -931,7 +937,7 @@ function renderTx(mg) {
       <div class="tx-icon">${cat.icon}</div>
       <div class="tx-info">
         <div class="tx-desc">${titulo}${detalle}</div>
-        <div class="tx-meta">${cat.label} · ${fechaStr} · ${g.usuario || DEFAULT_USER}${medioTag}</div>
+        <div class="tx-meta">${cat.label} · ${fechaStr}${g.hora ? ' ' + g.hora : ''} · ${g.usuario || DEFAULT_USER}${medioTag}</div>
       </div>
       <div class="tx-amount">${fmt(g.monto)}</div>
     </div>`;
@@ -962,6 +968,7 @@ function openModal() {
   document.getElementById('pendId').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('inputHora').value = '12:00';
   document.getElementById('inputComercio').value = '';
   document.getElementById('inputDesc').value = '';
   document.getElementById('inputMonto').value = '';
@@ -981,6 +988,7 @@ function openEditModal(id) {
   document.getElementById('pendId').value = '';
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = g.fecha;
+  document.getElementById('inputHora').value = g.hora || '12:00';
   document.getElementById('inputComercio').value = g.comercio || '';
   document.getElementById('inputDesc').value = g.desc || '';
   document.getElementById('inputMonto').value = g.monto;
@@ -1005,6 +1013,7 @@ function openAssignModal(id) {
   document.getElementById('pendId').value = id;
   document.getElementById('modalOverlay').classList.add('open');
   document.getElementById('inputFecha').value = p.fecha;
+  document.getElementById('inputHora').value = p.hora || '12:00';
   document.getElementById('inputComercio').value = p.comercio || '';
   document.getElementById('inputDesc').value = p.desc || sugerirDescripcion(p.comercio) || '';
   document.getElementById('inputMonto').value = p.monto;
@@ -1071,7 +1080,7 @@ function aceptarSugerencia(id, catId) {
   const p = pendientes.find(x => x.id === id);
   if (!p) return;
   const descFinal = p.desc || sugerirDescripcion(p.comercio) || '';
-  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: p.usuarioSugerido || DEFAULT_USER, medio: p.medio || 'TC' });
+  db.ref('gastos').push({ monto: p.monto, fecha: p.fecha, hora: p.hora || '12:00', comercio: p.comercio || '', cat: catId, desc: descFinal, usuario: p.usuarioSugerido || DEFAULT_USER, medio: p.medio || 'TC' });
   db.ref('pendientes/' + id).remove();
   aprenderComercio(p.comercio, catId);
 }
@@ -1112,6 +1121,7 @@ function buscarPosibleDuplicadoManual(fecha, monto) {
 function saveGasto() {
   const monto = parseFloat(document.getElementById('inputMonto').value);
   const fecha = document.getElementById('inputFecha').value;
+  const hora = document.getElementById('inputHora').value || '12:00';
   const comercio = document.getElementById('inputComercio').value.trim();
   const desc = document.getElementById('inputDesc').value.trim();
   const usuario = document.getElementById('inputUsuario').value;
@@ -1135,7 +1145,7 @@ function saveGasto() {
     }
   }
 
-  const data = { monto, fecha, comercio, cat: selectedCat, desc, usuario, medio };
+  const data = { monto, fecha, hora, comercio, cat: selectedCat, desc, usuario, medio };
   if (pendId) {
     db.ref('gastos').push(data);
     db.ref('pendientes/' + pendId).remove();
@@ -1294,11 +1304,11 @@ function completarMedioFaltante() {
 
 // ── EXPORTAR CSV ──
 function buildCSV() {
-  const rows = [['Fecha','Comercio','Descripción','Categoría','Monto','Usuario','Medio']];
+  const rows = [['Fecha','Hora','Comercio','Descripción','Categoría','Monto','Usuario','Medio']];
   const sorted = [...getMonthGastos()].sort((a,b) => a.fecha.localeCompare(b.fecha));
   sorted.forEach(g => {
     const cat = CATEGORIAS.find(c => c.id === g.cat);
-    rows.push([g.fecha, g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '', g.medio || '']);
+    rows.push([g.fecha, g.hora || '', g.comercio || '', g.desc || '', cat ? cat.label : g.cat, g.monto, g.usuario || '', g.medio || '']);
   });
   return rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
 }
