@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-09-12a -->
+<!-- VERSION: v2026-09-25a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -315,7 +315,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-09-12a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-09-25a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -390,6 +390,15 @@
 
 <!-- MÁS -->
 <div id="tab-mas" class="content" style="display:none;padding-bottom:90px;">
+  <div class="field">
+    <label>🔎 Buscar gasto por monto (útil para conciliar la cartola)</label>
+    <div style="display:flex;gap:8px;">
+      <input type="number" id="inputBuscarMonto" placeholder="Ej. 15990" inputmode="numeric" style="flex:1" onkeydown="if(event.key==='Enter') buscarPorMonto()">
+      <button class="btn-save" style="width:90px;margin:0;" onclick="buscarPorMonto()">Buscar</button>
+    </div>
+    <div id="resultadoBusquedaMonto" style="margin-top:10px;"></div>
+  </div>
+
   <div class="action-row">
     <button class="action-btn" onclick="openCatManager()"><span class="ic">🏷️</span>Categorías<br>y presupuesto</button>
     <button class="action-btn" onclick="openImportModal()"><span class="ic">📂</span>Cargar<br>Excel</button>
@@ -404,7 +413,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-09-12a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-09-25a</div>
 </div>
 
 <!-- FAB -->
@@ -1362,6 +1371,37 @@ function handleFile(event) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function buscarPorMonto() {
+  const val = document.getElementById('inputBuscarMonto').value.trim();
+  const cont = document.getElementById('resultadoBusquedaMonto');
+  if (!val || isNaN(val)) { cont.innerHTML = '<div class="no-data">Ingresa un monto válido</div>'; return; }
+  const montoBuscado = Math.abs(Math.round(parseFloat(val)));
+
+  const enGastos = gastos.filter(g => Math.abs(Math.round(parseFloat(g.monto))) === montoBuscado);
+  const enPendientes = pendientes.filter(p => Math.abs(Math.round(parseFloat(p.monto))) === montoBuscado);
+
+  if (enGastos.length === 0 && enPendientes.length === 0) {
+    cont.innerHTML = `<div class="no-data">No encontré ningún gasto ni pendiente por ${fmt(montoBuscado)}</div>`;
+    return;
+  }
+
+  let html = '';
+  enGastos.sort((a,b) => b.fecha.localeCompare(a.fecha)).forEach(g => {
+    const cat = CATEGORIAS.find(c => c.id === g.cat) || { icon: '📦', label: g.cat };
+    html += `<div class="import-row">
+      <div class="import-row-top"><span class="imp-desc">${cat.icon} ${g.comercio || '(sin comercio)'}</span><span class="imp-amount">${fmt(g.monto)}</span></div>
+      <div style="font-size:11px;color:var(--text3)">${g.fecha}${g.hora ? ' ' + g.hora : ''} · ${cat.label} · ${g.usuario || ''}${g.desc ? ' · "' + g.desc + '"' : ''}</div>
+    </div>`;
+  });
+  enPendientes.sort((a,b) => b.fecha.localeCompare(a.fecha)).forEach(p => {
+    html += `<div class="import-row" style="border-color:var(--warn);">
+      <div class="import-row-top"><span class="imp-desc">📥 ${p.comercio || '(sin comercio)'}</span><span class="imp-amount">${fmt(p.monto)}</span></div>
+      <div style="font-size:11px;color:var(--warn)">${p.fecha} · pendiente sin clasificar (Inbox)</div>
+    </div>`;
+  });
+  cont.innerHTML = html;
 }
 
 function openVerifyModal() {
