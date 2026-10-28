@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- VERSION: v2026-09-25a -->
+<!-- VERSION: v2026-10-28a -->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -315,7 +315,7 @@
     <h1>💰 Control Gastos MM</h1>
     <span class="user-badge" id="userBadge" onclick="openUserModal()">Ricardo</span>
   </div>
-  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-09-25a</div>
+  <div style="font-size:10px;color:var(--text3);margin-top:4px;margin-left:26px;">v2026-10-28a</div>
   <div class="month-nav">
     <button onclick="changeMonth(-1)">‹</button>
     <span class="month-label" id="monthLabel"></span>
@@ -413,7 +413,7 @@
   <div class="action-row">
     <button class="action-btn" onclick="openUserModal()"><span class="ic">👤</span>Cambiar<br>usuario</button>
   </div>
-  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-09-25a</div>
+  <div style="text-align:center;color:var(--text3);font-size:11px;margin-top:16px;">Versión v2026-10-28a</div>
 </div>
 
 <!-- FAB -->
@@ -1229,10 +1229,11 @@ function sugerirDescripcion(comercio) {
   if (!comercio) return null;
   const comNorm = normalizarComercioComparacion(comercio);
   if (!comNorm) return null;
-  const candidatos = gastos.filter(g => g.comercio && g.desc && normalizarComercioComparacion(g.comercio) === comNorm);
+  // Se mira SIEMPRE el último gasto del comercio: si su descripción quedó en blanco, no se sugiere nada
+  const candidatos = gastos.filter(g => g.comercio && normalizarComercioComparacion(g.comercio) === comNorm);
   if (candidatos.length === 0) return null;
   candidatos.sort((a, b) => b.fecha.localeCompare(a.fecha));
-  return candidatos[0].desc;
+  return candidatos[0].desc || null;
 }
 
 // ── GESTIÓN DE CATEGORÍAS ──
